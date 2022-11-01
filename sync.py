@@ -2,8 +2,9 @@ import os
 import glob
 import shutil
 import ftplib
+import configparser
 
-def find_element_in_list(list, element):
+def find_element(list, element):
 	try:
 		return list.index(element)
 	except ValueError:
@@ -34,32 +35,28 @@ def ftp_download(host, host_file, local_file):
 	os.makedirs(local_dir, exist_ok=True)
 	host.retrbinary("RETR /" + host_file, open(local_file, 'wb').write)
 
-def slave_filter(name):
-	if not name.endswith(".lha"):
-		return False
-	ignore_strings = [
-		"CD32", "CDTV", "NTSC",
-		"_De", "_Fr", "_Cz", "_Pl", "_Es", "_It", "_Gr", "_Dk",
-		"_DeEsFrIt"
-	]
-	for ignore_string in ignore_strings:
-		if name.find(ignore_string + "_") != -1 or name.find(ignore_string + ".") != -1:
+def slave_filter(name, ignore_exts, ignore_tags):
+	for s in ignore_exts:
+		if name.endswith("." + s):
+			return False
+	for s in ignore_tags:
+		if name.find(s + "_") != -1 or name.find(s + ".") != -1:
 			return False
 	return True
 
 def slave_is_aga(name):
 	return name.find("_AGA") != -1
 
-def sync(host, dirname):
-	host_basepath = "Retroplay WHDLoad Packs/Commodore_Amiga_-_WHDLoad_-_" + dirname + "/"
-	local_path = "Downloaded/" + dirname + "/"
-	transfer_path = "Transfer/" + dirname + "/"
-	transfer_aga_path = "TransferAGA/" + dirname + "/"
+def sync(host, settings, sync_settings):
+	host_basepath = sync_settings["FTPDirectory"].replace("\\", "/")
+	local_path = os.path.join(settings["DownloadDirectory"], sync_settings["LocalDirectory"])
+	transfer_path = os.path.join(settings["ChangedDirectory"], sync_settings["LocalDirectory"])
+	transfer_aga_path = os.path.join(settings["ChangedDirectoryAGA"], sync_settings["LocalDirectory"])
 	num_deleted = 0
 	num_modified = 0
 	num_downloaded = 0
 
-	print("# Processing %s (%s)" % (dirname, host_basepath))
+	print("# Processing %s" % (host_basepath))
 
 	os.makedirs(local_path, exist_ok=True)
 	os.makedirs(transfer_path, exist_ok=True)
@@ -67,20 +64,22 @@ def sync(host, dirname):
 
 	# Get local file list
 	local_filenames = []
-	local_filepaths = glob.glob(local_path + "*.*", recursive=False)
+	local_filepaths = glob.glob(os.path.join(local_path, "*.*"), recursive=False)
 	for i,filepath in enumerate(local_filepaths):
-		local_filepaths[i] = filepath.replace("\\", "/")
+		local_filepaths[i] = filepath
 		local_filenames.append(os.path.basename(filepath))
 	print("Found %d slaves locally" % (len(local_filepaths)))
 
 	# Get host file list
+	ignore_exts = sync_settings["IgnoreExts"].split()
+	ignore_tags = sync_settings["IgnoreTags"].split()
 	host_filenames = []
 	host_fileinfos = []
 	for path, _, fileinfos in ftp_walk(host, host_basepath):
 		for fileinfo in fileinfos:
 			filename = fileinfo[0]
 			filesize = fileinfo[1]
-			if slave_filter(filename):
+			if slave_filter(filename, ignore_exts, ignore_tags):
 				filepath = os.path.join(path, filename).replace("\\", "/")
 				host_filenames.append(filename)
 				host_fileinfos.append((filepath, filesize))
@@ -97,7 +96,7 @@ def sync(host, dirname):
 	for old_filename in old_filenames:
 		print("[OLD] " + old_filename)
 		old_filepath = local_path + old_filename
-		local_index = find_element_in_list(local_filenames, old_filename)
+		local_index = find_element(local_filenames, old_filename)
 		local_filenames.pop(local_index)
 		local_filepaths.pop(local_index)
 		os.remove(old_filepath)
@@ -110,7 +109,7 @@ def sync(host, dirname):
 		host_filesize = host_fileinfo[1]
 		is_downloaded = False
 		size_diff = 0
-		local_index = find_element_in_list(local_filenames, host_filename)
+		local_index = find_element(local_filenames, host_filename)
 		if local_index != None:
 			is_downloaded = True
 			size_diff = host_filesize - os.path.getsize(local_filepaths[local_index])
@@ -120,21 +119,28 @@ def sync(host, dirname):
 			print("[MOD] %s (%+d bytes)" % (host_filename, size_diff))
 			num_modified += 1
 		if not is_downloaded or size_diff != 0:
-			local_filepath = local_path + host_filename
+			local_filepath = os.path.join(local_path, host_filename)
 			ftp_download(host, host_fileinfo[0], local_filepath)
 			if slave_is_aga(host_filename):
-				shutil.copyfile(local_filepath, transfer_aga_path + host_filename)
+				shutil.copyfile(local_filepath, os.path.join(transfer_aga_path, host_filename))
 			else:
-				shutil.copyfile(local_filepath, transfer_path + host_filename)
+				shutil.copyfile(local_filepath, os.path.join(transfer_path, host_filename))
 			num_downloaded += 1
 
 	print("")
 	print("All done! Downloaded: %d, Modified: %d, Deleted: %d" % (num_downloaded, num_modified, num_deleted))
 	print("")
 
+# Read config
+config = configparser.ConfigParser()
+config.read('sync.ini')
+ftpinfo = config["FTP"]
+settings = config["Settings"]
+
 # Connect and sync
-with ftplib.FTP("ftp.grandis.nu", "ftp", "ftp", encoding='ISO-8859-1') as host:
-	sync(host, "Games")
-	sync(host, "Demos")
+with ftplib.FTP(ftpinfo["Host"], ftpinfo["Username"], ftpinfo["Password"], encoding=ftpinfo["Encoding"]) as host:
+	for sync_name in settings["Sync"].split():
+		sync_settings = config[sync_name]
+		sync(host, settings, sync_settings)
 
 os.system("pause")
