@@ -1,50 +1,56 @@
 .BRA {
 .KET }
 
-ASK "Extract AGA versions?"
-IF WARN
-	SET ProcessAGA 1
-ELSE
-	SET ProcessAGA 0
-ENDIF
-
 ; All paths must end with /
 SET PathGames "DATA:Games/"
 SET PathDemos "DATA:Demos/"
-SET PathAllGameNames "AllNames/Games/"
-SET PathAllDemoNames "AllNames/Demos/"
+SET PathChangedECSGames "ChangedECS/Games/"
+SET PathChangedECSDemos "ChangedECS/Demos/"
+SET PathChangedAGAGames "ChangedAGA/Games/"
+SET PathChangedAGADemos "ChangedAGA/Demos/"
+
+ASK "Is this machine AGA capable?"
+IF WARN
+	SET ProcessAGA 1
+	SET PathGameNames "NamesAGA/Games/"
+	SET PathDemoNames "NamesAGA/Demos/"
+ELSE
+	SET ProcessAGA 0
+	SET PathGameNames "NamesECS/Games/"
+	SET PathDemoNames "NamesECS/Demos/"
+ENDIF
 
 ; Delete unreferenced
-IF EXISTS $PathAllGameNames
-	ECHO "Deleting unreferenced in $PathGames..."
-	LIST $PathGames#? dirs lformat="execute delete_old %n $PathAllGameNames $PathGames" >RAM:script
+IF EXISTS $PathGameNames
+	ECHO "Deleting from $PathGames if not in $PathGameNames..."
+	LIST $PathGames#? dirs lformat="execute helper_delete %n $PathGameNames $PathGames" >RAM:script
 	EXECUTE RAM:script
 ENDIF
-IF EXISTS $PathAllDemoNames
-	ECHO "Deleting unreferenced in $PathDemos..."
-	LIST $PathDemos#? dirs lformat="execute delete_old %n $PathAllDemoNames $PathDemos" >RAM:script
+IF EXISTS $PathDemoNames
+	ECHO "Deleting from $PathDemos if not in $PathDemoNames..."
+	LIST $PathDemos#? dirs lformat="execute helper_delete %n $PathDemoNames $PathDemos" >RAM:script
 	EXECUTE RAM:script
 ENDIF
 
-; Extract changed
-ECHO "Extracting changed games to $PathGames..."
-LIST Changed/Games/#? lformat="execute extract %n %l %p $PathGames" >RAM:script
+; Extract changed ECS
+ECHO "Extracting $PathChangedECSGames to $PathGames..."
+LIST $PathChangedECSGames#? lformat="execute helper_extract %n %l %p $PathGames" >RAM:script
 EXECUTE RAM:script
-ECHO "Extracting changed demos to $PathDemos..."
-LIST Changed/Demos/#? lformat="execute extract %n %l %p $PathDemos" >RAM:script
+ECHO "Extracting $PathChangedECSDemos to $PathDemos..."
+LIST $PathChangedECSDemos#? lformat="execute helper_extract %n %l %p $PathDemos" >RAM:script
 EXECUTE RAM:script
 
 ; Extract changed AGA
 IF $ProcessAGA EQ 1
-	ECHO "Extracting changed AGA games to $PathGames..."
-	LIST ChangedAGA/Games/#? lformat="execute extract %n %l %p $PathGames" >RAM:script
+	ECHO "Extracting $PathChangedAGAGames to $PathGames..."
+	LIST $PathChangedAGAGames#? lformat="execute helper_extract %n %l %p $PathGames" >RAM:script
 	EXECUTE RAM:script
-	ECHO "Extracting changed AGA demos to $PathDemos..."
-	LIST ChangedAGA/Demos/#? lformat="execute extract %n %l %p $PathDemos" >RAM:script
+	ECHO "Extracting $PathChangedAGADemos to $PathDemos..."
+	LIST $PathChangedAGADemos#? lformat="execute helper_extract %n %l %p $PathDemos" >RAM:script
 	EXECUTE RAM:script
 ENDIF
 
-DELETE RAM:script QUIET >NIL:
+DELETE RAM:script QUIET
 
 ECHO ""
 ECHO "All done!"

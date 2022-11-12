@@ -1,8 +1,8 @@
-.KEY filename/A,filesize/A,srcpath/A,destpath/A
+.KEY filename/A,filesize/A,srcpath/A,dstpath/A
 .BRA {
 .KET }
 
 EVAL {filesize}/1024 lformat="- Extracting {filename} (%N kb)"
 ECHO ""
 
-lha -q x {srcpath}{filename} {srcpath}{dest}
+lha -q x {srcpath}{filename} {dstpath}

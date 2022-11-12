@@ -57,8 +57,8 @@ def slave_is_aga(name):
 def sync(host, settings, sync_settings):
 	host_basepath = sync_settings["FTPDirectory"].replace("\\", "/")
 	download_path = os.path.normpath(os.path.join(settings["DownloadDirectory"], sync_settings["LocalDirectory"]))
-	changed_path = os.path.normpath(os.path.join(settings["ChangedDirectory"], sync_settings["LocalDirectory"]))
-	changed_aga_path = os.path.normpath(os.path.join(settings["ChangedDirectoryAGA"], sync_settings["LocalDirectory"]))
+	changed_ecs_path = os.path.normpath(os.path.join(settings["ChangedECSDirectory"], sync_settings["LocalDirectory"]))
+	changed_aga_path = os.path.normpath(os.path.join(settings["ChangedAGADirectory"], sync_settings["LocalDirectory"]))
 	num_deleted = 0
 	num_changed = 0
 	num_downloaded = 0
@@ -67,7 +67,7 @@ def sync(host, settings, sync_settings):
 
 	# Create output directories
 	os.makedirs(download_path, exist_ok=True)
-	os.makedirs(changed_path, exist_ok=True)
+	os.makedirs(changed_ecs_path, exist_ok=True)
 	os.makedirs(changed_aga_path, exist_ok=True)
 
 	# Get local file list
@@ -104,7 +104,7 @@ def sync(host, settings, sync_settings):
 		if not local_filename in host_filenames:
 			old_filenames.append(local_filename)
 	for old_filename in old_filenames:
-		print("  [OLD] " + old_filename)
+		print("- [OLD] " + old_filename)
 		local_index = find_element(local_filenames, old_filename)
 
 		# Remove from arrays
@@ -115,8 +115,8 @@ def sync(host, settings, sync_settings):
 		os.remove(os.path.join(download_path, old_filename))
 
 		# Delete from changed directories
-		if os.path.exists(os.path.join(changed_path, old_filename)):
-			os.remove(os.path.join(changed_path, old_filename))
+		if os.path.exists(os.path.join(changed_ecs_path, old_filename)):
+			os.remove(os.path.join(changed_ecs_path, old_filename))
 		if os.path.exists(os.path.join(changed_aga_path, old_filename)):
 			os.remove(os.path.join(changed_aga_path, old_filename))
 
@@ -134,9 +134,9 @@ def sync(host, settings, sync_settings):
 			size_diff = host_filesize - os.path.getsize(local_filepaths[local_index])
 
 		if not is_downloaded:
-			print("  [NEW] " + host_filename)
+			print("- [NEW] " + host_filename)
 		elif size_diff != 0:
-			print("  [DIF] %s (%+d bytes)" % (host_filename, size_diff))
+			print("- [DIF] %s (%+d bytes)" % (host_filename, size_diff))
 			num_changed += 1
 
 		if not is_downloaded or size_diff != 0:
@@ -145,32 +145,39 @@ def sync(host, settings, sync_settings):
 			if slave_is_aga(host_filename):
 				shutil.copyfile(local_filepath, os.path.join(changed_aga_path, host_filename))
 			else:
-				shutil.copyfile(local_filepath, os.path.join(changed_path, host_filename))
+				shutil.copyfile(local_filepath, os.path.join(changed_ecs_path, host_filename))
 			num_downloaded += 1
 
-	print("  Downloaded: %d, Changed: %d, Deleted: %d\n" % (num_downloaded, num_changed, num_deleted))
+	print("- Downloaded: %d, Changed: %d, Deleted: %d\n" % (num_downloaded, num_changed, num_deleted))
 
 def build_names(settings, sync_settings):
 	try:
-		names_dir = settings["NamesDirectory"]
+		names_ecs_dir = settings["NamesECSDirectory"]
+		names_aga_dir = settings["NamesAGADirectory"]
 	except KeyError:
 		return
 
-	mirror_path = os.path.normpath(os.path.join(names_dir, sync_settings["LocalDirectory"]))
+	names_ecs_path = os.path.normpath(os.path.join(names_ecs_dir, sync_settings["LocalDirectory"]))
+	names_aga_path = os.path.normpath(os.path.join(names_aga_dir, sync_settings["LocalDirectory"]))
 	local_path = os.path.normpath(os.path.join(settings["DownloadDirectory"], sync_settings["LocalDirectory"]))
 
 	# Create output directories
-	if os.path.exists(mirror_path):
-		shutil.rmtree(mirror_path)
-	os.makedirs(mirror_path)
+	if os.path.exists(names_ecs_path):
+		shutil.rmtree(names_ecs_path)
+	os.makedirs(names_ecs_path)
+
+	if os.path.exists(names_aga_path):
+		shutil.rmtree(names_aga_path)
+	os.makedirs(names_aga_path)
 
 	# Get local file list
 	local_filepaths = glob.glob(os.path.join(local_path, "*.*"), recursive=False)
 
 	# Get .info files
-	info_filenames = []
+	info_ecs_filenames = []
+	info_aga_filenames = []
 	for i,local_filepath in enumerate(local_filepaths):
-		print("\rScanning archives for .info files... %d%%" % (100 * i / (len(local_filepaths) - 1)), end="")
+		print("\rScanning .info files... %d%%" % (100 * i / (len(local_filepaths) - 1)), end="")
 		try:
 			lha = lhafile.Lhafile(local_filepath)
 			info_filename = None
@@ -181,24 +188,33 @@ def build_names(settings, sync_settings):
 
 			if info_filename == None:
 				print(" : ERROR:: No .info file found in archive '%s'" % (local_filepath))
-			elif find_element(info_filenames, info_filename):
+			elif find_element(info_aga_filenames, info_filename):
 				print(" : ERROR: '%s' found in multiple archives" % (info_filename))
+			elif slave_is_aga(local_filepath):
+				info_aga_filenames.append(info_filename)
 			else:
-				info_filenames.append(info_filename)
+				info_aga_filenames.append(info_filename)
+				info_ecs_filenames.append(info_filename)
 		except:
 			print(" : ERROR: Failed to read archive '%s'" % (local_filepath))
 
 	print("")
 
-	if len(info_filenames) != len(local_filepaths):
-		print("Number of .info files does not match number of archvies, aborting automation")
+	if len(info_aga_filenames) != len(local_filepaths):
+		print("ERROR: Number of .info files does not match number of archvies, aborting")
 		print("")
 		return
 
-	for i,info_filename in enumerate(info_filenames):
-		print("\rCreating name files... %d%%" % (100 * i / (len(info_filenames) - 1)), end="")
+	for i,info_filename in enumerate(info_aga_filenames):
+		print("\rCreating AGA names... %d%%" % (100 * i / (len(info_aga_filenames) - 1)), end="")
 		filename_no_ext = os.path.splitext(info_filename)[0]
-		open(os.path.join(mirror_path, filename_no_ext), "wb")
+		open(os.path.join(names_aga_path, filename_no_ext), "wb")
+	print("")
+
+	for i,info_filename in enumerate(info_ecs_filenames):
+		print("\rCreating ECS names... %d%%" % (100 * i / (len(info_ecs_filenames) - 1)), end="")
+		filename_no_ext = os.path.splitext(info_filename)[0]
+		open(os.path.join(names_ecs_path, filename_no_ext), "wb")
 
 	print("")
 	print("")
