@@ -22,13 +22,13 @@ ENDIF
 
 ; Delete unreferenced
 IF EXISTS $PathGameNames
-	ECHO "Deleting from $PathGames if not in $PathGameNames..."
-	LIST $PathGames#? dirs lformat="execute helper_delete %n $PathGameNames $PathGames" >RAM:script
+	ECHO "Deleting from $PathGames if not existing in $PathGameNames..."
+	LIST $PathGames dirs lformat="execute helper_delete %n $PathGameNames $PathGames" >RAM:script
 	EXECUTE RAM:script
 ENDIF
 IF EXISTS $PathDemoNames
-	ECHO "Deleting from $PathDemos if not in $PathDemoNames..."
-	LIST $PathDemos#? dirs lformat="execute helper_delete %n $PathDemoNames $PathDemos" >RAM:script
+	ECHO "Deleting from $PathDemos if not existing in $PathDemoNames..."
+	LIST $PathDemos dirs lformat="execute helper_delete %n $PathDemoNames $PathDemos" >RAM:script
 	EXECUTE RAM:script
 ENDIF
 
@@ -48,6 +48,21 @@ IF $ProcessAGA EQ 1
 	ECHO "Extracting $PathChangedAGADemos to $PathDemos..."
 	LIST $PathChangedAGADemos#? lformat="execute helper_extract %n %l %p $PathDemos" >RAM:script
 	EXECUTE RAM:script
+ENDIF
+
+ECHO ""
+ASK "Search for missing?"
+IF WARN
+	IF EXISTS $PathGameNames
+		ECHO "Searching for missing in $PathGames..."
+		LIST $PathGameNames#? lformat="execute helper_missing %n $PathGames" >RAM:script
+		EXECUTE RAM:script
+	ENDIF
+	IF EXISTS $PathDemoNames
+		ECHO "Searching for missing in $PathDemos..."
+		LIST $PathDemoNames#? lformat="execute helper_missing %n $PathDemos" >RAM:script
+		EXECUTE RAM:script
+	ENDIF
 ENDIF
 
 DELETE RAM:script QUIET

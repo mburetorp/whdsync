@@ -1,0 +1,7 @@
+.KEY name/A,checkpath/A
+.BRA {
+.KET }
+
+IF NOT EXISTS "{checkpath}{name}"
+	ECHO "- Missing {name}"
+ENDIF
