@@ -1,0 +1,50 @@
+.BRA {
+.KET }
+
+ASK "Extract AGA versions?"
+IF WARN
+	SET ProcessAGA 1
+ELSE
+	SET ProcessAGA 0
+ENDIF
+
+; All paths must end with /
+SET PathGames "DATA:Games/"
+SET PathDemos "DATA:Demos/"
+SET PathAllGameNames "AllNames/Games/"
+SET PathAllDemoNames "AllNames/Demos/"
+
+; Delete unreferenced
+IF EXISTS $PathAllGameNames
+	ECHO "Deleting unreferenced in $PathGames..."
+	LIST $PathGames#? dirs lformat="execute delete_old %n $PathAllGameNames $PathGames" >RAM:script
+	EXECUTE RAM:script
+ENDIF
+IF EXISTS $PathAllDemoNames
+	ECHO "Deleting unreferenced in $PathDemos..."
+	LIST $PathDemos#? dirs lformat="execute delete_old %n $PathAllDemoNames $PathDemos" >RAM:script
+	EXECUTE RAM:script
+ENDIF
+
+; Extract changed
+ECHO "Extracting changed games to $PathGames..."
+LIST Changed/Games/#? lformat="execute extract %n %l %p $PathGames" >RAM:script
+EXECUTE RAM:script
+ECHO "Extracting changed demos to $PathDemos..."
+LIST Changed/Demos/#? lformat="execute extract %n %l %p $PathDemos" >RAM:script
+EXECUTE RAM:script
+
+; Extract changed AGA
+IF $ProcessAGA EQ 1
+	ECHO "Extracting changed AGA games to $PathGames..."
+	LIST ChangedAGA/Games/#? lformat="execute extract %n %l %p $PathGames" >RAM:script
+	EXECUTE RAM:script
+	ECHO "Extracting changed AGA demos to $PathDemos..."
+	LIST ChangedAGA/Demos/#? lformat="execute extract %n %l %p $PathDemos" >RAM:script
+	EXECUTE RAM:script
+ENDIF
+
+DELETE RAM:script QUIET >NIL:
+
+ECHO ""
+ECHO "All done!"
