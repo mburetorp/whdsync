@@ -1,7 +1,9 @@
 .BRA {
 .KET }
 
-; All paths must end with /
+RESIDENT C:Execute PURE
+
+; Setup paths (must end with /)
 SET PathGames "DATA:Games/"
 SET PathDemos "DATA:Demos/"
 SET PathChangedECSGames "ChangedECS/Games/"
@@ -9,7 +11,7 @@ SET PathChangedECSDemos "ChangedECS/Demos/"
 SET PathChangedAGAGames "ChangedAGA/Games/"
 SET PathChangedAGADemos "ChangedAGA/Demos/"
 
-ASK "Is this machine AGA capable?"
+ASK "Does this Amiga have the AGA chipset?"
 IF WARN
 	SET ProcessAGA 1
 	SET PathGameNames "NamesAGA/Games/"
@@ -20,52 +22,58 @@ ELSE
 	SET PathDemoNames "NamesECS/Demos/"
 ENDIF
 
-; Delete unreferenced
-IF EXISTS $PathGameNames
-	ECHO "Deleting from $PathGames if not existing in $PathGameNames..."
-	LIST $PathGames dirs lformat="execute helper_delete %n $PathGameNames $PathGames" >RAM:script
-	EXECUTE RAM:script
-ENDIF
-IF EXISTS $PathDemoNames
-	ECHO "Deleting from $PathDemos if not existing in $PathDemoNames..."
-	LIST $PathDemos dirs lformat="execute helper_delete %n $PathDemoNames $PathDemos" >RAM:script
-	EXECUTE RAM:script
-ENDIF
-
 ; Extract changed ECS
-ECHO "Extracting $PathChangedECSGames to $PathGames..."
-LIST $PathChangedECSGames#? lformat="execute helper_extract %n %l %p $PathGames" >RAM:script
-EXECUTE RAM:script
-ECHO "Extracting $PathChangedECSDemos to $PathDemos..."
-LIST $PathChangedECSDemos#? lformat="execute helper_extract %n %l %p $PathDemos" >RAM:script
-EXECUTE RAM:script
+ASK "[1/3] Extract new or changed slaves?"
+IF WARN
+	ECHO "Extracting $PathChangedECSGames to $PathGames..."
+	LIST $PathChangedECSGames#? lformat="execute helper_extract %n %l %p $PathGames" >RAM:script
+	EXECUTE RAM:script
+	ECHO "Extracting $PathChangedECSDemos to $PathDemos..."
+	LIST $PathChangedECSDemos#? lformat="execute helper_extract %n %l %p $PathDemos" >RAM:script
+	EXECUTE RAM:script
 
-; Extract changed AGA
-IF $ProcessAGA EQ 1
-	ECHO "Extracting $PathChangedAGAGames to $PathGames..."
-	LIST $PathChangedAGAGames#? lformat="execute helper_extract %n %l %p $PathGames" >RAM:script
-	EXECUTE RAM:script
-	ECHO "Extracting $PathChangedAGADemos to $PathDemos..."
-	LIST $PathChangedAGADemos#? lformat="execute helper_extract %n %l %p $PathDemos" >RAM:script
-	EXECUTE RAM:script
+	; Extract changed AGA
+	IF $ProcessAGA EQ 1
+		ECHO "Extracting $PathChangedAGAGames to $PathGames..."
+		LIST $PathChangedAGAGames#? lformat="execute helper_extract %n %l %p $PathGames" >RAM:script
+		EXECUTE RAM:script
+		ECHO "Extracting $PathChangedAGADemos to $PathDemos..."
+		LIST $PathChangedAGADemos#? lformat="execute helper_extract %n %l %p $PathDemos" >RAM:script
+		EXECUTE RAM:script
+	ENDIF
 ENDIF
 
-ECHO ""
-ASK "Search for missing?"
+; Delete unreferenced
+ASK "[2/3] Delete unreferenced slaves? (slow)"
 IF WARN
 	IF EXISTS $PathGameNames
-		ECHO "Searching for missing in $PathGames..."
+		ECHO "Deleting from $PathGames if not existing in $PathGameNames..."
+		LIST $PathGames dirs lformat="execute helper_delete %n $PathGameNames $PathGames" >RAM:script
+		EXECUTE RAM:script
+	ENDIF
+	IF EXISTS $PathDemoNames
+		ECHO "Deleting from $PathDemos if not existing in $PathDemoNames..."
+		LIST $PathDemos dirs lformat="execute helper_delete %n $PathDemoNames $PathDemos" >RAM:script
+		EXECUTE RAM:script
+	ENDIF
+ENDIF
+
+; Search for missing
+ASK "[3/3] Scan for missing slaves? (slow)"
+IF WARN
+	IF EXISTS $PathGameNames
+		ECHO "Scanning for missing slaves in $PathGames..."
 		LIST $PathGameNames#? lformat="execute helper_missing %n $PathGames" >RAM:script
 		EXECUTE RAM:script
 	ENDIF
 	IF EXISTS $PathDemoNames
-		ECHO "Searching for missing in $PathDemos..."
+		ECHO "Scanning for missing slaves in $PathDemos..."
 		LIST $PathDemoNames#? lformat="execute helper_missing %n $PathDemos" >RAM:script
 		EXECUTE RAM:script
 	ENDIF
 ENDIF
 
-DELETE RAM:script QUIET
+DELETE RAM:script QUIET >NIL:
 
 ECHO ""
 ECHO "All done!"

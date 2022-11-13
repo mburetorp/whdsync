@@ -5,4 +5,4 @@
 EVAL {filesize}/1024 lformat="- Extracting {filename} (%N kb)"
 ECHO ""
 
-lha -q x {srcpath}{filename} {dstpath}
+lha -a -q x {srcpath}{filename} {dstpath}
