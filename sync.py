@@ -2,18 +2,26 @@ import os
 import glob
 import shutil
 import ftplib
+import fnmatch
 import configparser
 import lhafile
+import zipfile
+import xml.etree.ElementTree as ET
 
+class CustomError(Exception):
+	pass
+
+# ================================================================
 def find_element(list, element):
 	try:
 		return list.index(element)
 	except ValueError:
 		return None
 
+# ================================================================
 def ftp_list(host):
 	file_list, dirs, files = [], [], []
-	host.retrlines('LIST', lambda x: file_list.append(x.split()))
+	host.retrlines('LIST', lambda x: file_list.append(x.split(None, 8)))
 	for info in file_list:
 		if info[0] == "total":
 			continue
@@ -23,6 +31,7 @@ def ftp_list(host):
 			files.append( (info[-1], int(info[4])) )
 	return dirs, files
 
+# ================================================================
 def ftp_walk(host, path):
 	host.cwd("/" + path)
 	dirs, files = ftp_list(host)
@@ -31,11 +40,19 @@ def ftp_walk(host, path):
 		new_path = os.path.join(path, name).replace("\\", "/")
 		yield from ftp_walk(host, new_path)
 
-def ftp_download(host, host_file, local_file):
-	local_dir = os.path.dirname(local_file)
+# ================================================================
+def ftp_download(host, host_filepath, local_filepath):
+	local_dir = os.path.dirname(local_filepath)
 	os.makedirs(local_dir, exist_ok=True)
-	host.retrbinary("RETR /" + host_file, open(local_file, 'wb').write)
+	file = open(local_filepath, 'wb')
+	try:
+		host.retrbinary("RETR /" + host_filepath, file.write)
+	except Exception as e:
+		file.close()
+		os.remove(local_filepath)
+		raise e
 
+# ================================================================
 def slave_filter(name, accepted_exts, ignored_names, ignored_tags):
 	for s in ignored_names:
 		if name.startswith(s):
@@ -51,9 +68,91 @@ def slave_filter(name, accepted_exts, ignored_names, ignored_tags):
 	else:
 		return True
 
+# ================================================================
 def slave_is_aga(name):
 	return name.find("_AGA") != -1
 
+# ================================================================
+def get_host_files(host, host_basepath, sync_settings):
+	accepted_exts = sync_settings["AcceptedExtentions"].split()
+	ignored_names = sync_settings["IgnoredNames"].split()
+	ignored_tags = sync_settings["IgnoredTags"].split()
+	host_fileinfos = []
+
+	for path, _, fileinfos in ftp_walk(host, host_basepath):
+		for fileinfo in fileinfos:
+			filename = fileinfo[0]
+			filesize = fileinfo[1]
+			if slave_filter(filename, accepted_exts, ignored_names, ignored_tags):
+				filepath = os.path.join(path, filename).replace("\\", "/")
+				host_fileinfos.append((filename, filepath, filesize))
+				print("\rFound %d slaves on FTP" % (len(host_fileinfos)), end="")
+
+	if len(host_fileinfos) > 0:
+		print("")
+
+	return host_fileinfos
+
+# ================================================================
+def download_database(host, database_pattern):
+	basepath = os.path.dirname(database_pattern)
+	filepattern = os.path.basename(database_pattern)
+	host_filepath = None
+	local_filepath = "Temp/Database.zip"
+
+	host.cwd("/" + basepath)
+	dirs, files = ftp_list(host)
+	for info in files:
+		if fnmatch.fnmatch(info[0], filepattern):
+			if host_filepath == None:
+				host_filepath = os.path.join(basepath, info[0]).replace("\\", "/")
+			else:
+				raise CustomError("Multiple database files found using pattern '" + filepattern + "'")
+
+	if host_filepath == None:
+		raise CustomError("No database found using pattern '" + filepattern + "'")
+
+	print("Downloading database '%s' to '%s'..." % (host_filepath, local_filepath))
+	ftp_download(host, host_filepath, local_filepath)
+	return local_filepath
+
+# ================================================================
+def parse_database(root, host_basepath, sync_settings):
+	accepted_exts = sync_settings["AcceptedExtentions"].split()
+	ignored_names = sync_settings["IgnoredNames"].split()
+	ignored_tags = sync_settings["IgnoredTags"].split()
+	host_fileinfos = []
+
+	for dir_child in root:
+		if dir_child.tag == "machine":
+			dir = dir_child.attrib["name"]
+			for rom_child in dir_child:
+				if rom_child.tag == "rom":
+					filename = rom_child.attrib["name"]
+					filesize = int(rom_child.attrib["size"])
+					filepath = os.path.join(host_basepath, dir, filename).replace("\\", "/")
+					if slave_filter(filename, accepted_exts, ignored_names, ignored_tags):
+						host_fileinfos.append((filename, filepath, filesize))
+
+	return host_fileinfos
+
+# ================================================================
+def get_host_files_using_database(host, host_basepath, database_filepattern, sync_settings):
+	database_filepath = download_database(host, database_filepattern)
+	host_fileinfos = []
+
+	with zipfile.ZipFile(database_filepath) as zip:
+		filenames = zip.namelist()
+		if len(filenames) != 1:
+			raise CustomError("Expected database to contain exactly one file")
+		with zip.open(filenames[0]) as file:
+			root = ET.fromstring(file.read())
+			host_fileinfos = parse_database(root, host_basepath, sync_settings)
+	
+	print("Found %d slaves on FTP" % (len(host_fileinfos)))
+	return host_fileinfos
+
+# ================================================================
 def sync(host, settings, sync_settings):
 	host_basepath = sync_settings["FTPDirectory"].replace("\\", "/")
 	download_path = os.path.normpath(os.path.join(settings["DownloadDirectory"], sync_settings["LocalDirectory"]))
@@ -70,6 +169,17 @@ def sync(host, settings, sync_settings):
 	os.makedirs(changed_ecs_path, exist_ok=True)
 	os.makedirs(changed_aga_path, exist_ok=True)
 
+	# Get host file list
+	try:
+		host_fileinfos = get_host_files_using_database(host, host_basepath, sync_settings["UseDatabaseFile"], sync_settings)
+	except KeyError:
+		host_fileinfos = get_host_files(host, host_basepath, sync_settings)
+
+	if len(host_fileinfos) == 0:
+		print("No files found on host, aborting")
+		return
+	host_filenames = [info[0] for info in host_fileinfos]
+
 	# Get local file list
 	local_filenames = []
 	local_filepaths = glob.glob(os.path.join(download_path, "*.*"), recursive=False)
@@ -78,23 +188,6 @@ def sync(host, settings, sync_settings):
 		local_filenames.append(os.path.basename(filepath))
 	print("Found %d slaves locally" % (len(local_filepaths)))
 
-	# Get host file list
-	accepted_exts = sync_settings["AcceptedExtentions"].split()
-	ignored_names = sync_settings["IgnoredNames"].split()
-	ignored_tags = sync_settings["IgnoredTags"].split()
-	host_filenames = []
-	host_fileinfos = []
-	for path, _, fileinfos in ftp_walk(host, host_basepath):
-		for fileinfo in fileinfos:
-			filename = fileinfo[0]
-			filesize = fileinfo[1]
-			if slave_filter(filename, accepted_exts, ignored_names, ignored_tags):
-				filepath = os.path.join(path, filename).replace("\\", "/")
-				host_filenames.append(filename)
-				host_fileinfos.append((filepath, filesize))
-				print("\rFound %d slaves on FTP" % (len(host_fileinfos)), end="")
-
-	print("")
 	print("")
 	print("Synchronizing files...")
 
@@ -124,8 +217,8 @@ def sync(host, settings, sync_settings):
 
 	# Download new slaves
 	for host_fileinfo in host_fileinfos:
-		host_filename = os.path.basename(host_fileinfo[0])
-		host_filesize = host_fileinfo[1]
+		host_filename = host_fileinfo[0]
+		host_filesize = host_fileinfo[2]
 		is_downloaded = False
 		size_diff = 0
 		local_index = find_element(local_filenames, host_filename)
@@ -141,15 +234,19 @@ def sync(host, settings, sync_settings):
 
 		if not is_downloaded or size_diff != 0:
 			local_filepath = os.path.join(download_path, host_filename)
-			ftp_download(host, host_fileinfo[0], local_filepath)
-			if slave_is_aga(host_filename):
-				shutil.copyfile(local_filepath, os.path.join(changed_aga_path, host_filename))
-			else:
-				shutil.copyfile(local_filepath, os.path.join(changed_ecs_path, host_filename))
-			num_downloaded += 1
+			try:
+				ftp_download(host, host_fileinfo[1], local_filepath)
+				if slave_is_aga(host_filename):
+					shutil.copyfile(local_filepath, os.path.join(changed_aga_path, host_filename))
+				else:
+					shutil.copyfile(local_filepath, os.path.join(changed_ecs_path, host_filename))
+				num_downloaded += 1
+			except Exception as e:
+				print("  Download failed with error:", str(e))
 
 	print("- Downloaded: %d, Changed: %d, Deleted: %d\n" % (num_downloaded, num_changed, num_deleted))
 
+# ================================================================
 def build_names(settings, sync_settings):
 	try:
 		names_ecs_dir = settings["NamesECSDirectory"]
@@ -219,6 +316,7 @@ def build_names(settings, sync_settings):
 	print("")
 	print("")
 
+# ================================================================
 def main():
 	# Read config
 	config_file = "sync.ini"
@@ -232,17 +330,21 @@ def main():
 	try:
 		host = ftplib.FTP(ftpinfo["Host"], ftpinfo["Username"], ftpinfo["Password"], encoding=ftpinfo["Encoding"])
 		print(" Done")
-	except:
-		print(" Failed, check credentials in '%s'" % (config_file))
+	except Exception as e:
+		print(" Failed with error message:", str(e))
 		return
 	print("")
 
 	# Sync
-	for sync_name in settings["Sync"].split():
-		print("## Processing %s ##" % (sync_name))
-		sync_settings = config[sync_name]
-		sync(host, settings, sync_settings)
-		build_names(settings, sync_settings)
+	try:
+		for sync_name in settings["Sync"].split():
+			print("## Processing %s ##" % (sync_name))
+			sync_settings = config[sync_name]
+			sync(host, settings, sync_settings)
+			build_names(settings, sync_settings)
+	except CustomError as e:
+		print("ERROR: " + str(e))
+		print("")
 
 	host.close()
 
