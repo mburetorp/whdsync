@@ -112,7 +112,7 @@ def download_database(host, database_pattern):
 	if host_filepath == None:
 		raise CustomError("No database found using pattern '" + filepattern + "'")
 
-	print("Downloading database '%s' to '%s'..." % (host_filepath, local_filepath))
+	print("Downloading database '%s' to '%s'..." % (os.path.basename(host_filepath), local_filepath))
 	ftp_download(host, host_filepath, local_filepath)
 	return local_filepath
 
@@ -348,4 +348,6 @@ def main():
 
 	host.close()
 
-main()	
+main()
+
+input("Press Enter to exit...")
