@@ -1,9 +1,9 @@
-.KEY name/A,checkpath/A,deletepath/A
+.KEY name/A,path/A
 .BRA {
 .KET }
 
-IF NOT EXISTS "{checkpath}{name}"
-	ECHO "- Deleting {deletepath}{name}"
-	DELETE "{deletepath}{name}" ALL FORCE QUIET
-	DELETE "{deletepath}{name}.info" FORCE QUIET
+IF EXISTS "{path}{name}"
+	ECHO "- Deleting {path}{name}"
+	DELETE "{path}{name}" ALL FORCE QUIET
+	DELETE "{path}{name}.info" FORCE QUIET
 ENDIF

@@ -7,6 +7,7 @@ import configparser
 import lhafile
 import zipfile
 import xml.etree.ElementTree as ET
+import dateparser.search
 
 class CustomError(Exception):
 	pass
@@ -73,6 +74,14 @@ def slave_is_aga(name):
 	return name.find("_AGA") != -1
 
 # ================================================================
+def slave_get_name(filepath):
+	lha = lhafile.Lhafile(filepath)
+	for info in lha.infolist():
+		if not info.directory and info.filename.endswith(".info"):
+			return os.path.splitext(info.filename)[0]
+	raise CustomError("No .info file found in archive '%s'" % (filepath))
+
+# ================================================================
 def get_host_files(host, host_basepath, sync_settings):
 	accepted_exts = sync_settings["AcceptedExtentions"].split()
 	ignored_names = sync_settings["IgnoredNames"].split()
@@ -97,24 +106,29 @@ def get_host_files(host, host_basepath, sync_settings):
 def download_database(host, database_pattern):
 	basepath = os.path.dirname(database_pattern)
 	filepattern = os.path.basename(database_pattern)
-	host_filepath = None
-	local_filepath = "Temp/Database.zip"
+
+	# Search for most recent database
+	newest_date = None
+	database_filepath = None
 
 	host.cwd("/" + basepath)
 	dirs, files = ftp_list(host)
 	for info in files:
 		if fnmatch.fnmatch(info[0], filepattern):
-			if host_filepath == None:
-				host_filepath = os.path.join(basepath, info[0]).replace("\\", "/")
-			else:
-				raise CustomError("Multiple database files found using pattern '" + filepattern + "'")
+			date = dateparser.search.search_dates(info[0])
+			if database_filepath == None or (date != None and newest_date != None and date[0][1] > newest_date[0][1]):
+				newest_date = date
+				database_filepath = os.path.join(basepath, info[0]).replace("\\", "/")
 
-	if host_filepath == None:
+	if database_filepath == None:
 		raise CustomError("No database found using pattern '" + filepattern + "'")
 
-	print("Downloading database '%s' to '%s'..." % (os.path.basename(host_filepath), local_filepath))
-	ftp_download(host, host_filepath, local_filepath)
-	return local_filepath
+	# Download
+	database_filename = os.path.basename(database_filepath)
+	download_filepath = os.path.join("Temp/", database_filename)
+	print("Found database '%s'..." % (database_filename))
+	ftp_download(host, database_filepath, download_filepath)
+	return download_filepath
 
 # ================================================================
 def parse_database(root, host_basepath, sync_settings):
@@ -156,8 +170,9 @@ def get_host_files_using_database(host, host_basepath, database_filepattern, syn
 def sync(host, settings, sync_settings):
 	host_basepath = sync_settings["FTPDirectory"].replace("\\", "/")
 	download_path = os.path.normpath(os.path.join(settings["DownloadDirectory"], sync_settings["LocalDirectory"]))
-	changed_ecs_path = os.path.normpath(os.path.join(settings["ChangedECSDirectory"], sync_settings["LocalDirectory"]))
-	changed_aga_path = os.path.normpath(os.path.join(settings["ChangedAGADirectory"], sync_settings["LocalDirectory"]))
+	extract_ecs_path = os.path.normpath(os.path.join(settings["SyncExtractECSDirectory"], sync_settings["LocalDirectory"]))
+	extract_aga_path = os.path.normpath(os.path.join(settings["SyncExtractAGADirectory"], sync_settings["LocalDirectory"]))
+	delete_path = os.path.normpath(os.path.join(settings["SyncDeleteDirectory"], sync_settings["LocalDirectory"]))
 	num_deleted = 0
 	num_changed = 0
 	num_downloaded = 0
@@ -166,8 +181,8 @@ def sync(host, settings, sync_settings):
 
 	# Create output directories
 	os.makedirs(download_path, exist_ok=True)
-	os.makedirs(changed_ecs_path, exist_ok=True)
-	os.makedirs(changed_aga_path, exist_ok=True)
+	os.makedirs(extract_ecs_path, exist_ok=True)
+	os.makedirs(extract_aga_path, exist_ok=True)
 
 	# Get host file list
 	try:
@@ -192,6 +207,7 @@ def sync(host, settings, sync_settings):
 	print("Synchronizing files...")
 
 	# Delete old local slaves
+	delete_names = []
 	old_filenames = []
 	for local_filename in local_filenames:
 		if not local_filename in host_filenames:
@@ -199,6 +215,10 @@ def sync(host, settings, sync_settings):
 	for old_filename in old_filenames:
 		print("- [OLD] " + old_filename)
 		local_index = find_element(local_filenames, old_filename)
+
+		# Add slave name to changed slaves
+		slave_name = slave_get_name(local_filepaths[local_index])
+		delete_names.append(slave_name)
 
 		# Remove from arrays
 		local_filenames.pop(local_index)
@@ -208,10 +228,10 @@ def sync(host, settings, sync_settings):
 		os.remove(os.path.join(download_path, old_filename))
 
 		# Delete from changed directories
-		if os.path.exists(os.path.join(changed_ecs_path, old_filename)):
-			os.remove(os.path.join(changed_ecs_path, old_filename))
-		if os.path.exists(os.path.join(changed_aga_path, old_filename)):
-			os.remove(os.path.join(changed_aga_path, old_filename))
+		if os.path.exists(os.path.join(extract_ecs_path, old_filename)):
+			os.remove(os.path.join(extract_ecs_path, old_filename))
+		if os.path.exists(os.path.join(extract_aga_path, old_filename)):
+			os.remove(os.path.join(extract_aga_path, old_filename))
 
 		num_deleted += 1
 
@@ -221,99 +241,102 @@ def sync(host, settings, sync_settings):
 		host_filesize = host_fileinfo[2]
 		is_downloaded = False
 		size_diff = 0
+
+		# Check if already downloaded
 		local_index = find_element(local_filenames, host_filename)
 		if local_index != None:
 			is_downloaded = True
 			size_diff = host_filesize - os.path.getsize(local_filepaths[local_index])
 
+		# Print text
 		if not is_downloaded:
 			print("- [NEW] " + host_filename)
 		elif size_diff != 0:
 			print("- [DIF] %s (%+d bytes)" % (host_filename, size_diff))
 			num_changed += 1
 
+		# Download
 		if not is_downloaded or size_diff != 0:
 			local_filepath = os.path.join(download_path, host_filename)
 			try:
 				ftp_download(host, host_fileinfo[1], local_filepath)
 				if slave_is_aga(host_filename):
-					shutil.copyfile(local_filepath, os.path.join(changed_aga_path, host_filename))
+					shutil.copyfile(local_filepath, os.path.join(extract_aga_path, host_filename))
 				else:
-					shutil.copyfile(local_filepath, os.path.join(changed_ecs_path, host_filename))
+					shutil.copyfile(local_filepath, os.path.join(extract_ecs_path, host_filename))
+
+				# Add slave name to changed slaves
+				slave_name = slave_get_name(local_filepath)
+				delete_names.append(slave_name)
+
 				num_downloaded += 1
 			except Exception as e:
 				print("  Download failed with error:", str(e))
 
+	# Write delete names
+	os.makedirs(delete_path, exist_ok=True)
+	for i,name in enumerate(delete_names):
+		open(os.path.join(delete_path, name), "wb")
+
 	print("- Downloaded: %d, Changed: %d, Deleted: %d\n" % (num_downloaded, num_changed, num_deleted))
 
 # ================================================================
-def build_names(settings, sync_settings):
+def build_all_names(settings, sync_settings):
 	try:
-		names_ecs_dir = settings["NamesECSDirectory"]
-		names_aga_dir = settings["NamesAGADirectory"]
+		names_ecs_dir = settings["SyncNamesECSDirectory"]
+		names_aga_dir = settings["SyncNamesAGADirectory"]
 	except KeyError:
 		return
 
+	local_path = os.path.normpath(os.path.join(settings["DownloadDirectory"], sync_settings["LocalDirectory"]))
 	names_ecs_path = os.path.normpath(os.path.join(names_ecs_dir, sync_settings["LocalDirectory"]))
 	names_aga_path = os.path.normpath(os.path.join(names_aga_dir, sync_settings["LocalDirectory"]))
-	local_path = os.path.normpath(os.path.join(settings["DownloadDirectory"], sync_settings["LocalDirectory"]))
 
 	# Create output directories
 	if os.path.exists(names_ecs_path):
 		shutil.rmtree(names_ecs_path)
-	os.makedirs(names_ecs_path)
-
 	if os.path.exists(names_aga_path):
 		shutil.rmtree(names_aga_path)
+	os.makedirs(names_ecs_path)
 	os.makedirs(names_aga_path)
 
 	# Get local file list
 	local_filepaths = glob.glob(os.path.join(local_path, "*.*"), recursive=False)
 
 	# Get .info files
-	info_ecs_filenames = []
-	info_aga_filenames = []
+	slave_names_ecs = []
+	slave_names_aga = []
 	for i,local_filepath in enumerate(local_filepaths):
 		print("\rScanning .info files... %d%%" % (100 * i / (len(local_filepaths) - 1)), end="")
 		try:
-			lha = lhafile.Lhafile(local_filepath)
-			info_filename = None
-			for info in lha.infolist():
-				if not info.directory and info.filename.endswith(".info"):
-					info_filename = info.filename
-					break
-
-			if info_filename == None:
-				print(" : ERROR:: No .info file found in archive '%s'" % (local_filepath))
-			elif find_element(info_aga_filenames, info_filename):
-				print(" : ERROR: '%s' found in multiple archives" % (info_filename))
+			slave_name = slave_get_name(local_filepath)
+			if find_element(slave_names_aga, slave_name):
+				print(" : ERROR: '%s' found in multiple archives" % slave_name)
 			elif slave_is_aga(local_filepath):
-				info_aga_filenames.append(info_filename)
+				slave_names_aga.append(slave_name)
 			else:
-				info_aga_filenames.append(info_filename)
-				info_ecs_filenames.append(info_filename)
+				slave_names_aga.append(slave_name)
+				slave_names_ecs.append(slave_name)
 		except:
 			print(" : ERROR: Failed to read archive '%s'" % (local_filepath))
 
 	print("")
 
-	if len(info_aga_filenames) != len(local_filepaths):
+	if len(slave_names_aga) != len(local_filepaths):
 		print("ERROR: Number of .info files does not match number of archvies, aborting")
 		print("")
 		return
 
-	for i,info_filename in enumerate(info_aga_filenames):
-		print("\rCreating AGA names... %d%%" % (100 * i / (len(info_aga_filenames) - 1)), end="")
-		filename_no_ext = os.path.splitext(info_filename)[0]
-		open(os.path.join(names_aga_path, filename_no_ext), "wb")
+	for i,name in enumerate(slave_names_aga):
+		print("\rCreating all AGA names... %d%%" % (100 * i / (len(slave_names_aga) - 1)), end="")
+		open(os.path.join(names_aga_path, name), "wb")
 	print("")
 
-	for i,info_filename in enumerate(info_ecs_filenames):
-		print("\rCreating ECS names... %d%%" % (100 * i / (len(info_ecs_filenames) - 1)), end="")
-		filename_no_ext = os.path.splitext(info_filename)[0]
-		open(os.path.join(names_ecs_path, filename_no_ext), "wb")
-
+	for i,name in enumerate(slave_names_ecs):
+		print("\rCreating all ECS names... %d%%" % (100 * i / (len(slave_names_ecs) - 1)), end="")
+		open(os.path.join(names_ecs_path, name), "wb")
 	print("")
+
 	print("")
 
 # ================================================================
@@ -341,7 +364,7 @@ def main():
 			print("## Processing %s ##" % (sync_name))
 			sync_settings = config[sync_name]
 			sync(host, settings, sync_settings)
-			build_names(settings, sync_settings)
+			build_all_names(settings, sync_settings)
 	except CustomError as e:
 		print("ERROR: " + str(e))
 		print("")
