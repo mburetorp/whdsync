@@ -328,12 +328,12 @@ def build_all_names(settings, sync_settings):
 		return
 
 	for i,name in enumerate(slave_names_aga):
-		print("\rCreating all AGA names... %d%%" % (100 * i / (len(slave_names_aga) - 1)), end="")
+		print("\rWriting all AGA names... %d%%" % (100 * i / (len(slave_names_aga) - 1)), end="")
 		open(os.path.join(names_aga_path, name), "wb")
 	print("")
 
 	for i,name in enumerate(slave_names_ecs):
-		print("\rCreating all ECS names... %d%%" % (100 * i / (len(slave_names_ecs) - 1)), end="")
+		print("\rWriting all ECS names... %d%%" % (100 * i / (len(slave_names_ecs) - 1)), end="")
 		open(os.path.join(names_ecs_path, name), "wb")
 	print("")
 
@@ -360,7 +360,7 @@ def main():
 
 	# Sync
 	try:
-		for sync_name in settings["Sync"].split():
+		for sync_name in settings["SyncSections"].split():
 			print("## Processing %s ##" % (sync_name))
 			sync_settings = config[sync_name]
 			sync(host, settings, sync_settings)
