@@ -29,55 +29,60 @@ IF WARN
 	; Delete
 	IF EXISTS $PathDeleteGames
 		;ECHO "Deleting old or changed from $PathGames..."
-		LIST $PathDeleteGames lformat="execute helper_delete %n $PathGames" >RAM:script
+		LIST $PathDeleteGames LFORMAT="EXECUTE helper_delete $PathGames%n" >RAM:script
+		EXECUTE RAM:script
+	ENDIF
+	IF EXISTS $PathDeleteDemos
+		;ECHO "Deleting old or changed from $PathDemos..."
+		LIST $PathDeleteDemos LFORMAT="EXECUTE helper_delete $PathDemos%n" >RAM:script
 		EXECUTE RAM:script
 	ENDIF
 
 	; Extract ECS
 	;ECHO "Extracting $PathExtractECSGames to $PathGames..."
-	LIST $PathExtractECSGames lformat="execute helper_extract %n %l %p $PathGames" >RAM:script
+	LIST $PathExtractECSGames LFORMAT="EXECUTE helper_extract %n %l %p $PathGames" >RAM:script
 	EXECUTE RAM:script
 	;ECHO "Extracting $PathExtractECSDemos to $PathDemos..."
-	LIST $PathExtractECSDemos lformat="execute helper_extract %n %l %p $PathDemos" >RAM:script
+	LIST $PathExtractECSDemos LFORMAT="EXECUTE helper_extract %n %l %p $PathDemos" >RAM:script
 	EXECUTE RAM:script
 
 	; Extract AGA
 	IF $ProcessAGA EQ 1
 		;ECHO "Extracting $PathExtractAGAGames to $PathGames..."
-		LIST $PathExtractAGAGames lformat="execute helper_extract %n %l %p $PathGames" >RAM:script
+		LIST $PathExtractAGAGames LFORMAT="EXECUTE helper_extract %n %l %p $PathGames" >RAM:script
 		EXECUTE RAM:script
 		;ECHO "Extracting $PathExtractAGADemos to $PathDemos..."
-		LIST $PathExtractAGADemos lformat="execute helper_extract %n %l %p $PathDemos" >RAM:script
+		LIST $PathExtractAGADemos LFORMAT="EXECUTE helper_extract %n %l %p $PathDemos" >RAM:script
 		EXECUTE RAM:script
 	ENDIF
 ENDIF
 
 ; Delete unreferenced
-ASK "[2/3] Scan for unreferenced slaves and delete them? (very slow)"
+ASK "[2/3] Scan for unreferenced slaves and delete them? (slow)"
 IF WARN
 	IF EXISTS $PathGameNames
 		ECHO "Deleting from $PathGames if not existing in $PathGameNames..."
-		LIST $PathGames dirs lformat="execute helper_delete_unref %n $PathGameNames $PathGames" >RAM:script
+		LIST $PathGames dirs LFORMAT="IF NOT EXISTS $PathGameNames%n *N EXECUTE helper_delete $PathGames%n *N ENDIF" >RAM:script
 		EXECUTE RAM:script
 	ENDIF
 	IF EXISTS $PathDemoNames
 		ECHO "Deleting from $PathDemos if not existing in $PathDemoNames..."
-		LIST $PathDemos dirs lformat="execute helper_delete_unref %n $PathDemoNames $PathDemos" >RAM:script
+		LIST $PathDemos dirs LFORMAT="IF NOT EXISTS $PathDemoNames%n *N EXECUTE helper_delete $PathDemos%n *N ENDIF" >RAM:script
 		EXECUTE RAM:script
 	ENDIF
 ENDIF
 
 ; Search for missing
-ASK "[3/3] Scan for missing slaves and notify? (very slow)"
+ASK "[3/3] Scan for missing slaves and notify? (slow)"
 IF WARN
 	IF EXISTS $PathGameNames
 		ECHO "Scanning for missing slaves in $PathGames..."
-		LIST $PathGameNames lformat="execute helper_missing %n $PathGames" >RAM:script
+		LIST $PathGameNames LFORMAT="IF NOT EXISTS $PathGames%n *N ECHO - Missing game %n *N ENDIF" >RAM:script
 		EXECUTE RAM:script
 	ENDIF
 	IF EXISTS $PathDemoNames
 		ECHO "Scanning for missing slaves in $PathDemos..."
-		LIST $PathDemoNames lformat="execute helper_missing %n $PathDemos" >RAM:script
+		LIST $PathDemoNames LFORMAT="IF NOT EXISTS $PathDemos%n *N ECHO - Missing demo %n *N ENDIF" >RAM:script
 		EXECUTE RAM:script
 	ENDIF
 ENDIF
