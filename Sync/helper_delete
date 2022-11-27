@@ -4,6 +4,6 @@
 
 IF EXISTS "{path}"
 	ECHO "- Deleting {path}"
-	;DELETE "{path}" ALL FORCE QUIET
-	;DELETE "{path}.info" FORCE QUIET
+	DELETE "{path}" ALL FORCE QUIET
+	DELETE "{path}.info" FORCE QUIET
 ENDIF
