@@ -124,9 +124,10 @@ def download_database(host, database_pattern):
 		raise CustomError("No database found using pattern '" + filepattern + "'")
 
 	# Download
-	database_filename = os.path.basename(database_filepath)
-	download_filepath = os.path.join("Temp/", database_filename)
-	print("Found database '%s'..." % (database_filename))
+	download_filepath = os.path.join("Temp/", filepattern)
+	download_filepath = download_filepath.replace("*", "").replace("?", "")
+
+	print("Found database '%s'..." % (os.path.basename(database_filepath)))
 	ftp_download(host, database_filepath, download_filepath)
 	return download_filepath
 
