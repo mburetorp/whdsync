@@ -281,6 +281,8 @@ def sync(host, settings, sync_settings):
 
 	print("- Downloaded: %d, Changed: %d, Deleted: %d\n" % (num_downloaded, num_changed, num_deleted))
 
+	return num_downloaded != 0 or num_changed != 0 or num_deleted != 0
+
 # ================================================================
 def build_all_names(settings, sync_settings):
 	try:
@@ -364,8 +366,9 @@ def main():
 		for sync_name in settings["SyncSections"].split():
 			print("## Processing %s ##" % (sync_name))
 			sync_settings = config[sync_name]
-			sync(host, settings, sync_settings)
-			build_all_names(settings, sync_settings)
+			changed = sync(host, settings, sync_settings)
+			if changed:
+				build_all_names(settings, sync_settings)
 	except CustomError as e:
 		print("ERROR: " + str(e))
 		print("")
