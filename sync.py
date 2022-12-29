@@ -178,7 +178,7 @@ def sync(host, settings, sync_settings):
 	num_changed = 0
 	num_downloaded = 0
 
-	print("# Synchronizing %s:%s -> %s" % (host.host, host_basepath, download_path))
+	print("> Synchronizing %s:%s -> %s" % (host.host, host_basepath, download_path))
 
 	# Create output directories
 	os.makedirs(download_path, exist_ok=True)
@@ -310,7 +310,7 @@ def build_all_names(settings, sync_settings):
 	slave_names_ecs = []
 	slave_names_aga = []
 	for i,local_filepath in enumerate(local_filepaths):
-		print("\rScanning .info files... %d%%" % (100 * i / (len(local_filepaths) - 1)), end="")
+		print("\rScanning archives... %d%%" % (100 * i / (len(local_filepaths) - 1)), end="")
 		try:
 			slave_name = slave_get_name(local_filepath)
 			if find_element(slave_names_aga, slave_name):
@@ -364,7 +364,6 @@ def main():
 	# Sync
 	try:
 		for sync_name in settings["SyncSections"].split():
-			print("## Processing %s ##" % (sync_name))
 			sync_settings = config[sync_name]
 			changed = sync(host, settings, sync_settings)
 			if changed:
