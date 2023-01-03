@@ -6,8 +6,11 @@ import fnmatch
 import configparser
 import lhafile
 import zipfile
+import hashlib
 import xml.etree.ElementTree as ET
 import dateparser.search
+
+debug_dry_run = False
 
 class CustomError(Exception):
 	pass
@@ -18,6 +21,12 @@ def find_element(list, element):
 		return list.index(element)
 	except ValueError:
 		return None
+
+# ================================================================
+def hash_file_md5(filepath):
+	with open(filepath,"rb") as f:
+		return hashlib.md5(f.read()).hexdigest()
+	raise CustomError("Failed to calculate md5 hash for file '%s'" % (filepath))
 
 # ================================================================
 def ftp_list(host):
@@ -145,9 +154,10 @@ def parse_database(root, host_basepath, sync_settings):
 				if rom_child.tag == "rom":
 					filename = rom_child.attrib["name"]
 					filesize = int(rom_child.attrib["size"])
+					filemd5 = rom_child.attrib["md5"]
 					filepath = os.path.join(host_basepath, dir, filename).replace("\\", "/")
 					if slave_filter(filename, accepted_exts, ignored_names, ignored_tags):
-						host_fileinfos.append((filename, filepath, filesize))
+						host_fileinfos.append((filename, filepath, filesize, filemd5))
 
 	return host_fileinfos
 
@@ -217,22 +227,23 @@ def sync(host, settings, sync_settings):
 		print("- [OLD] " + old_filename)
 		local_index = find_element(local_filenames, old_filename)
 
-		# Add slave name to changed slaves
-		slave_name = slave_get_name(local_filepaths[local_index])
-		delete_names.append(slave_name)
-
 		# Remove from arrays
 		local_filenames.pop(local_index)
 		local_filepaths.pop(local_index)
 
-		# Delete from download directory
-		os.remove(os.path.join(download_path, old_filename))
+		if not debug_dry_run:
+			# Add slave name to changed slaves
+			slave_name = slave_get_name(local_filepaths[local_index])
+			delete_names.append(slave_name)
 
-		# Delete from changed directories
-		if os.path.exists(os.path.join(extract_ecs_path, old_filename)):
-			os.remove(os.path.join(extract_ecs_path, old_filename))
-		if os.path.exists(os.path.join(extract_aga_path, old_filename)):
-			os.remove(os.path.join(extract_aga_path, old_filename))
+			# Delete from download directory
+			os.remove(os.path.join(download_path, old_filename))
+
+			# Delete from changed directories
+			if os.path.exists(os.path.join(extract_ecs_path, old_filename)):
+				os.remove(os.path.join(extract_ecs_path, old_filename))
+			if os.path.exists(os.path.join(extract_aga_path, old_filename)):
+				os.remove(os.path.join(extract_aga_path, old_filename))
 
 		num_deleted += 1
 
@@ -240,24 +251,28 @@ def sync(host, settings, sync_settings):
 	for host_fileinfo in host_fileinfos:
 		host_filename = host_fileinfo[0]
 		host_filesize = host_fileinfo[2]
+		host_filemd5 = host_fileinfo[3]
 		is_downloaded = False
+		is_changed = False
 		size_diff = 0
 
 		# Check if already downloaded
 		local_index = find_element(local_filenames, host_filename)
 		if local_index != None:
+			local_filepath = local_filepaths[local_index]
+			size_diff = host_filesize - os.path.getsize(local_filepath)
 			is_downloaded = True
-			size_diff = host_filesize - os.path.getsize(local_filepaths[local_index])
+			is_changed = size_diff != 0 or host_filemd5 != hash_file_md5(local_filepath)
 
 		# Print text
 		if not is_downloaded:
 			print("- [NEW] " + host_filename)
-		elif size_diff != 0:
+		elif is_changed:
 			print("- [DIF] %s (%+d bytes)" % (host_filename, size_diff))
 			num_changed += 1
 
 		# Download
-		if not is_downloaded or size_diff != 0:
+		if not debug_dry_run and (not is_downloaded or is_changed):
 			local_filepath = os.path.join(download_path, host_filename)
 			try:
 				ftp_download(host, host_fileinfo[1], local_filepath)
@@ -285,6 +300,9 @@ def sync(host, settings, sync_settings):
 
 # ================================================================
 def build_all_names(settings, sync_settings):
+	if debug_dry_run:
+		return
+
 	try:
 		names_ecs_dir = settings["SyncNamesECSDirectory"]
 		names_aga_dir = settings["SyncNamesAGADirectory"]
