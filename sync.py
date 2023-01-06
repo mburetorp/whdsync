@@ -1,4 +1,5 @@
 import os
+import time
 import glob
 import shutil
 import ftplib
@@ -29,9 +30,9 @@ def hash_file_md5(filepath):
 	raise CustomError("Failed to calculate md5 hash for file '%s'" % (filepath))
 
 # ================================================================
-def ftp_list(host):
+def ftp_list(connection):
 	file_list, dirs, files = [], [], []
-	host.retrlines('LIST', lambda x: file_list.append(x.split(None, 8)))
+	connection.retrlines('LIST', lambda x: file_list.append(x.split(None, 8)))
 	for info in file_list:
 		if info[0] == "total":
 			continue
@@ -42,21 +43,21 @@ def ftp_list(host):
 	return dirs, files
 
 # ================================================================
-def ftp_walk(host, path):
-	host.cwd("/" + path)
-	dirs, files = ftp_list(host)
+def ftp_walk(connection, path):
+	connection.cwd("/" + path)
+	dirs, files = ftp_list(connection)
 	yield path, dirs, files
 	for name in dirs:
 		new_path = os.path.join(path, name).replace("\\", "/")
-		yield from ftp_walk(host, new_path)
+		yield from ftp_walk(connection, new_path)
 
 # ================================================================
-def ftp_download(host, host_filepath, local_filepath):
+def ftp_download(connection, host_filepath, local_filepath):
 	local_dir = os.path.dirname(local_filepath)
 	os.makedirs(local_dir, exist_ok=True)
 	file = open(local_filepath, 'wb')
 	try:
-		host.retrbinary("RETR /" + host_filepath, file.write)
+		connection.retrbinary("RETR /" + host_filepath, file.write)
 	except Exception as e:
 		file.close()
 		os.remove(local_filepath)
@@ -91,13 +92,13 @@ def slave_get_name(filepath):
 	raise CustomError("No .info file found in archive '%s'" % (filepath))
 
 # ================================================================
-def get_host_files(host, host_basepath, sync_settings):
+def get_host_files(connection, host_basepath, sync_settings):
 	accepted_exts = sync_settings["AcceptedExtentions"].split()
 	ignored_names = sync_settings["IgnoredNames"].split()
 	ignored_tags = sync_settings["IgnoredTags"].split()
 	host_fileinfos = []
 
-	for path, _, fileinfos in ftp_walk(host, host_basepath):
+	for path, _, fileinfos in ftp_walk(connection, host_basepath):
 		for fileinfo in fileinfos:
 			filename = fileinfo[0]
 			filesize = fileinfo[1]
@@ -112,7 +113,7 @@ def get_host_files(host, host_basepath, sync_settings):
 	return host_fileinfos
 
 # ================================================================
-def download_database(host, database_pattern):
+def download_database(connection, database_pattern):
 	basepath = os.path.dirname(database_pattern)
 	filepattern = os.path.basename(database_pattern)
 
@@ -120,8 +121,8 @@ def download_database(host, database_pattern):
 	newest_date = None
 	database_filepath = None
 
-	host.cwd("/" + basepath)
-	dirs, files = ftp_list(host)
+	connection.cwd("/" + basepath)
+	dirs, files = ftp_list(connection)
 	for info in files:
 		if fnmatch.fnmatch(info[0], filepattern):
 			date = dateparser.search.search_dates(info[0])
@@ -137,7 +138,7 @@ def download_database(host, database_pattern):
 	download_filepath = download_filepath.replace("*", "").replace("?", "")
 
 	print("Found database '%s'..." % (os.path.basename(database_filepath)))
-	ftp_download(host, database_filepath, download_filepath)
+	ftp_download(connection, database_filepath, download_filepath)
 	return download_filepath
 
 # ================================================================
@@ -162,8 +163,8 @@ def parse_database(root, host_basepath, sync_settings):
 	return host_fileinfos
 
 # ================================================================
-def get_host_files_using_database(host, host_basepath, database_filepattern, sync_settings):
-	database_filepath = download_database(host, database_filepattern)
+def get_host_files_using_database(connection, host_basepath, database_filepattern, sync_settings):
+	database_filepath = download_database(connection, database_filepattern)
 	host_fileinfos = []
 
 	with zipfile.ZipFile(database_filepath) as zip:
@@ -178,7 +179,7 @@ def get_host_files_using_database(host, host_basepath, database_filepattern, syn
 	return host_fileinfos
 
 # ================================================================
-def sync(host, settings, sync_settings):
+def sync(connection, settings, sync_settings):
 	host_basepath = sync_settings["FTPDirectory"].replace("\\", "/")
 	download_path = os.path.normpath(os.path.join(settings["DownloadDirectory"], sync_settings["LocalDirectory"]))
 	extract_ecs_path = os.path.normpath(os.path.join(settings["SyncExtractECSDirectory"], sync_settings["LocalDirectory"]))
@@ -188,7 +189,7 @@ def sync(host, settings, sync_settings):
 	num_changed = 0
 	num_downloaded = 0
 
-	print("> Synchronizing %s:%s -> %s" % (host.host, host_basepath, download_path))
+	print("> Synchronizing %s:%s -> %s" % (connection.host, host_basepath, download_path))
 
 	# Create output directories
 	os.makedirs(download_path, exist_ok=True)
@@ -197,9 +198,9 @@ def sync(host, settings, sync_settings):
 
 	# Get host file list
 	try:
-		host_fileinfos = get_host_files_using_database(host, host_basepath, sync_settings["UseDatabaseFile"], sync_settings)
+		host_fileinfos = get_host_files_using_database(connection, host_basepath, sync_settings["UseDatabaseFile"], sync_settings)
 	except KeyError:
-		host_fileinfos = get_host_files(host, host_basepath, sync_settings)
+		host_fileinfos = get_host_files(connection, host_basepath, sync_settings)
 
 	if len(host_fileinfos) == 0:
 		print("No files found on host, aborting")
@@ -275,7 +276,7 @@ def sync(host, settings, sync_settings):
 		if not debug_dry_run and (not is_downloaded or is_changed):
 			local_filepath = os.path.join(download_path, host_filename)
 			try:
-				ftp_download(host, host_fileinfo[1], local_filepath)
+				ftp_download(connection, host_fileinfo[1], local_filepath)
 				if slave_is_aga(host_filename):
 					shutil.copyfile(local_filepath, os.path.join(extract_aga_path, host_filename))
 				else:
@@ -361,36 +362,55 @@ def build_all_names(settings, sync_settings):
 	print("")
 
 # ================================================================
+def connect(ftpinfo):
+	hosts = ftpinfo["Hosts"].split()
+	max_attempts = 10
+	for attempt in range(max_attempts):
+		for host in hosts:
+			print("Connecting to '%s'..." % (host), end="")
+			try:
+				connection = ftplib.FTP(host, ftpinfo["Username"], ftpinfo["Password"], encoding=ftpinfo["Encoding"])
+				print(" Done")
+				print("")
+				return connection
+			except Exception as e:
+				print(" Failed with error message:", str(e))
+				time.sleep(1)
+
+		print("Waiting 30 seconds before next attempt")
+		print("")
+		time.sleep(5)
+
+	print("Failed to connect on all %i attempts" % (max_attempts))
+	print("")
+
+	return None
+
+# ================================================================
 def main():
 	# Read config
 	config_file = "sync.ini"
 	config = configparser.ConfigParser()
 	config.read(config_file)
-	ftpinfo = config["FTP"]
 	settings = config["Settings"]
 
 	# Connect
-	print("Connecting to '%s'..." % (ftpinfo["Host"]), end="")
-	try:
-		host = ftplib.FTP(ftpinfo["Host"], ftpinfo["Username"], ftpinfo["Password"], encoding=ftpinfo["Encoding"])
-		print(" Done")
-	except Exception as e:
-		print(" Failed with error message:", str(e))
+	connection = connect(config["FTP"])
+	if connection == None:
 		return
-	print("")
 
 	# Sync
 	try:
 		for sync_name in settings["SyncSections"].split():
 			sync_settings = config[sync_name]
-			changed = sync(host, settings, sync_settings)
+			changed = sync(connection, settings, sync_settings)
 			if changed:
 				build_all_names(settings, sync_settings)
 	except CustomError as e:
 		print("ERROR: " + str(e))
 		print("")
 
-	host.close()
+	connection.close()
 
 main()
 
