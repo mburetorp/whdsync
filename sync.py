@@ -92,27 +92,6 @@ def slave_get_name(filepath):
 	raise CustomError("No .info file found in archive '%s'" % (filepath))
 
 # ================================================================
-def get_host_files(connection, host_basepath, sync_settings):
-	accepted_exts = sync_settings["AcceptedExtentions"].split()
-	ignored_names = sync_settings["IgnoredNames"].split()
-	ignored_tags = sync_settings["IgnoredTags"].split()
-	host_fileinfos = []
-
-	for path, _, fileinfos in ftp_walk(connection, host_basepath):
-		for fileinfo in fileinfos:
-			filename = fileinfo[0]
-			filesize = fileinfo[1]
-			if slave_filter(filename, accepted_exts, ignored_names, ignored_tags):
-				filepath = os.path.join(path, filename).replace("\\", "/")
-				host_fileinfos.append((filename, filepath, filesize))
-				print("\rFound %d slaves on FTP" % (len(host_fileinfos)), end="")
-
-	if len(host_fileinfos) > 0:
-		print("")
-
-	return host_fileinfos
-
-# ================================================================
 def download_database(connection, database_pattern):
 	basepath = os.path.dirname(database_pattern)
 	filepattern = os.path.basename(database_pattern)
@@ -197,11 +176,7 @@ def sync(connection, settings, sync_settings):
 	os.makedirs(extract_aga_path, exist_ok=True)
 
 	# Get host file list
-	try:
-		host_fileinfos = get_host_files_using_database(connection, host_basepath, sync_settings["UseDatabaseFile"], sync_settings)
-	except KeyError:
-		host_fileinfos = get_host_files(connection, host_basepath, sync_settings)
-
+	host_fileinfos = get_host_files_using_database(connection, host_basepath, sync_settings["DatabaseFile"], sync_settings)
 	if len(host_fileinfos) == 0:
 		print("No files found on host, aborting")
 		return
