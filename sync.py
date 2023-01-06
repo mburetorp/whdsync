@@ -345,7 +345,7 @@ def connect(ftpinfo):
 			print("Connecting to '%s'..." % (host), end="")
 			try:
 				connection = ftplib.FTP(host, ftpinfo["Username"], ftpinfo["Password"], encoding=ftpinfo["Encoding"])
-				print(" Done")
+				print(" Successful")
 				print("")
 				return connection
 			except Exception as e:
