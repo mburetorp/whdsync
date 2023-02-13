@@ -27,7 +27,7 @@ def find_element(list, element):
 def hash_file_md5(filepath):
 	with open(filepath,"rb") as f:
 		return hashlib.md5(f.read()).hexdigest()
-	raise CustomError("Failed to calculate md5 hash for file '%s'" % (filepath))
+	raise CustomError(f"Failed to calculate md5 hash for file '{filepath}'")
 
 # ================================================================
 def ftp_list(connection):
@@ -89,7 +89,7 @@ def slave_get_name(filepath):
 	for info in lha.infolist():
 		if not info.directory and info.filename.endswith(".info"):
 			return os.path.splitext(info.filename)[0]
-	raise CustomError("No .info file found in archive '%s'" % (filepath))
+	raise CustomError(f"No .info file found in archive '{filepath}'")
 
 # ================================================================
 def download_database(connection, database_pattern):
@@ -116,7 +116,7 @@ def download_database(connection, database_pattern):
 	download_filepath = os.path.join("Temp/", filepattern)
 	download_filepath = download_filepath.replace("*", "").replace("?", "")
 
-	print("Found database '%s'..." % (os.path.basename(database_filepath)))
+	print(f"Found database '{os.path.basename(database_filepath)}'...")
 	ftp_download(connection, database_filepath, download_filepath)
 	return download_filepath
 
@@ -154,7 +154,7 @@ def get_host_files_using_database(connection, host_basepath, database_filepatter
 			root = ET.fromstring(file.read())
 			host_fileinfos = parse_database(root, host_basepath, sync_settings)
 	
-	print("Found %d slaves on FTP" % (len(host_fileinfos)))
+	print(f"Found {len(host_fileinfos)} slaves on FTP")
 	return host_fileinfos
 
 # ================================================================
@@ -168,7 +168,7 @@ def sync(connection, settings, sync_settings):
 	num_changed = 0
 	num_downloaded = 0
 
-	print("> Synchronizing %s:%s -> %s" % (connection.host, host_basepath, download_path))
+	print(f"> Synchronizing {connection.host}:{host_basepath} -> {download_path}")
 
 	# Create output directories
 	os.makedirs(download_path, exist_ok=True)
@@ -188,7 +188,7 @@ def sync(connection, settings, sync_settings):
 	for i,filepath in enumerate(local_filepaths):
 		local_filepaths[i] = filepath
 		local_filenames.append(os.path.basename(filepath))
-	print("Found %d slaves locally" % (len(local_filepaths)))
+	print(f"Found {len(local_filepaths)} slaves locally")
 
 	print("")
 	print("Synchronizing files...")
@@ -242,9 +242,9 @@ def sync(connection, settings, sync_settings):
 
 		# Print text
 		if not is_downloaded:
-			print("- [NEW] " + host_filename)
+			print(f"- [NEW] {host_filename}")
 		elif is_changed:
-			print("- [DIF] %s (%+d bytes)" % (host_filename, size_diff))
+			print(f"- [DIF] {host_filename} ({size_diff:+} bytes)")
 			num_changed += 1
 
 		# Download
@@ -270,7 +270,7 @@ def sync(connection, settings, sync_settings):
 	for i,name in enumerate(delete_names):
 		open(os.path.join(delete_path, name), "wb")
 
-	print("- Downloaded: %d, Changed: %d, Deleted: %d\n" % (num_downloaded, num_changed, num_deleted))
+	print(f"- Downloaded: {num_downloaded}, Changed: {num_changed}, Deleted: {num_deleted}\n")
 
 	return num_downloaded != 0 or num_changed != 0 or num_deleted != 0
 
@@ -304,18 +304,18 @@ def build_all_names(settings, sync_settings):
 	slave_names_ecs = []
 	slave_names_aga = []
 	for i,local_filepath in enumerate(local_filepaths):
-		print("\rScanning archives... %d%%" % (100 * i / (len(local_filepaths) - 1)), end="")
+		print(f"\rScanning archives... {100 * i // (len(local_filepaths) - 1)}%", end="")
 		try:
 			slave_name = slave_get_name(local_filepath)
 			if find_element(slave_names_aga, slave_name):
-				print(" : ERROR: '%s' found in multiple archives" % slave_name)
+				print(f" : ERROR: '{slave_name}' found in multiple archives")
 			elif slave_is_aga(local_filepath):
 				slave_names_aga.append(slave_name)
 			else:
 				slave_names_aga.append(slave_name)
 				slave_names_ecs.append(slave_name)
 		except:
-			print(" : ERROR: Failed to read archive '%s'" % (local_filepath))
+			print(f" : ERROR: Failed to read archive '{local_filepath}'")
 
 	print("")
 
@@ -325,12 +325,12 @@ def build_all_names(settings, sync_settings):
 		return
 
 	for i,name in enumerate(slave_names_aga):
-		print("\rWriting all AGA names... %d%%" % (100 * i / (len(slave_names_aga) - 1)), end="")
+		print(f"\rWriting all AGA names... {100 * i // (len(slave_names_aga) - 1)}%", end="")
 		open(os.path.join(names_aga_path, name), "wb")
 	print("")
 
 	for i,name in enumerate(slave_names_ecs):
-		print("\rWriting all ECS names... %d%%" % (100 * i / (len(slave_names_ecs) - 1)), end="")
+		print(f"\rWriting all ECS names... {100 * i // (len(slave_names_ecs) - 1)}%", end="")
 		open(os.path.join(names_ecs_path, name), "wb")
 	print("")
 
@@ -342,7 +342,7 @@ def connect(ftpinfo):
 	max_attempts = 10
 	for attempt in range(max_attempts):
 		for host in hosts:
-			print("Connecting to '%s'..." % (host), end="")
+			print(f"Connecting to '{host}'...", end="")
 			try:
 				connection = ftplib.FTP(host, ftpinfo["Username"], ftpinfo["Password"], encoding=ftpinfo["Encoding"])
 				print(" Successful")
@@ -356,7 +356,7 @@ def connect(ftpinfo):
 		print("")
 		time.sleep(5)
 
-	print("Failed to connect on all %i attempts" % (max_attempts))
+	print(f"Failed to connect on all {max_attempts} attempts")
 	print("")
 
 	return None
