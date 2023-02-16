@@ -1,0 +1,1 @@
+@FORFILES /C "cmd /c IF @isdir==TRUE RMDIR /S /Q @file"
