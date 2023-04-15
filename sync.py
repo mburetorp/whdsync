@@ -325,12 +325,12 @@ def build_all_names(settings, sync_settings):
 		return
 
 	for i,name in enumerate(slave_names_aga):
-		print(f"\rWriting all AGA names... {100 * i // (len(slave_names_aga) - 1)}%", end="")
+		print(f"\rWriting AGA names... {100 * i // (len(slave_names_aga) - 1)}%", end="")
 		open(os.path.join(names_aga_path, name), "wb")
 	print("")
 
 	for i,name in enumerate(slave_names_ecs):
-		print(f"\rWriting all ECS names... {100 * i // (len(slave_names_ecs) - 1)}%", end="")
+		print(f"\rWriting ECS names... {100 * i // (len(slave_names_ecs) - 1)}%", end="")
 		open(os.path.join(names_ecs_path, name), "wb")
 	print("")
 
