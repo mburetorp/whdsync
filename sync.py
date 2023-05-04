@@ -252,6 +252,20 @@ def sync(connection, settings, sync_settings):
 			local_filepath = os.path.join(download_path, host_filename)
 			try:
 				ftp_download(connection, host_fileinfo[1], local_filepath)
+
+				# Verify size
+				local_filesize = os.path.getsize(local_filepath)
+				if local_filesize != host_filesize:
+					os.remove(local_filepath)
+					raise CustomError(f"Downloaded file '{local_filepath}' size ({local_filesize} bytes) does not match host ({host_filesize} bytes)")
+
+				# Verify MD5
+				local_filemd5 = hash_file_md5(local_filepath)
+				if local_filemd5 != host_filemd5:
+					os.remove(local_filepath)
+					raise CustomError(f"Downloaded file '{local_filepath}' MD5 sum does not match host")
+
+				# Copy
 				if slave_is_aga(host_filename):
 					shutil.copyfile(local_filepath, os.path.join(extract_aga_path, host_filename))
 				else:
