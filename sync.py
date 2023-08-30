@@ -10,6 +10,7 @@ import zipfile
 import hashlib
 import xml.etree.ElementTree as ET
 import dateparser.search
+import argparse
 
 debug_dry_run = False
 
@@ -289,7 +290,7 @@ def sync(connection, settings, sync_settings):
 	return num_downloaded != 0 or num_changed != 0 or num_deleted != 0
 
 # ================================================================
-def build_all_names(settings, sync_settings):
+def create_all_names(settings, sync_settings):
 	if debug_dry_run:
 		return
 
@@ -339,12 +340,12 @@ def build_all_names(settings, sync_settings):
 		return
 
 	for i,name in enumerate(slave_names_aga):
-		print(f"\rWriting AGA names... {100 * i // (len(slave_names_aga) - 1)}%", end="")
+		print(f"\rCreating AGA names... {100 * i // (len(slave_names_aga) - 1)}%", end="")
 		open(os.path.join(names_aga_path, name), "wb")
 	print("")
 
 	for i,name in enumerate(slave_names_ecs):
-		print(f"\rWriting ECS names... {100 * i // (len(slave_names_ecs) - 1)}%", end="")
+		print(f"\rCreating ECS names... {100 * i // (len(slave_names_ecs) - 1)}%", end="")
 		open(os.path.join(names_ecs_path, name), "wb")
 	print("")
 
@@ -377,6 +378,10 @@ def connect(ftpinfo):
 
 # ================================================================
 def main():
+	argparser = argparse.ArgumentParser()
+	argparser.add_argument("--create-names", action="store_true", help="Create names on disk even if nothing was changed") 
+	args = argparser.parse_args()
+
 	# Read config
 	config_file = "sync.ini"
 	config = configparser.ConfigParser()
@@ -393,8 +398,8 @@ def main():
 		for sync_name in settings["SyncSections"].split():
 			sync_settings = config[sync_name]
 			changed = sync(connection, settings, sync_settings)
-			if changed:
-				build_all_names(settings, sync_settings)
+			if changed or args.create_names:
+				create_all_names(settings, sync_settings)
 	except CustomError as e:
 		print("ERROR: " + str(e))
 		print("")
