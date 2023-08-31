@@ -204,10 +204,6 @@ def sync(connection, settings, sync_settings):
 		print("- [OLD] " + old_filename)
 		local_index = find_element(local_filenames, old_filename)
 
-		# Remove from arrays
-		local_filenames.pop(local_index)
-		local_filepaths.pop(local_index)
-
 		if not debug_dry_run:
 			# Add slave name to changed slaves
 			slave_name = slave_get_name(local_filepaths[local_index])
@@ -222,6 +218,9 @@ def sync(connection, settings, sync_settings):
 			if os.path.exists(os.path.join(extract_aga_path, old_filename)):
 				os.remove(os.path.join(extract_aga_path, old_filename))
 
+		# Remove from arrays
+		local_filenames.pop(local_index)
+		local_filepaths.pop(local_index)
 		num_deleted += 1
 
 	# Download new slaves
