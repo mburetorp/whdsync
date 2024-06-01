@@ -12,8 +12,6 @@ import xml.etree.ElementTree as ET
 import dateparser.search
 import argparse
 
-debug_dry_run = True
-
 class CustomError(Exception):
 	pass
 
@@ -159,7 +157,7 @@ def get_host_files_using_database(connection, host_basepath, database_filepatter
 	return host_fileinfos
 
 # ================================================================
-def sync(connection, settings, sync_settings):
+def sync(connection, settings, sync_settings, dry_run):
 	host_basepath = sync_settings["FTPDirectory"].replace("\\", "/")
 	local_sync_dir = sync_settings["LocalDirectory"]
 	updates_dir = settings["UpdatesDirectory"]
@@ -207,7 +205,7 @@ def sync(connection, settings, sync_settings):
 		print("- [OLD] " + old_filename)
 		local_index = find_element(local_filenames, old_filename)
 
-		if not debug_dry_run:
+		if not dry_run:
 			# Add slave name to changed slaves
 			slave_name = slave_get_name(local_filepaths[local_index])
 			delete_names.append(slave_name)
@@ -251,7 +249,7 @@ def sync(connection, settings, sync_settings):
 			num_changed += 1
 
 		# Download
-		if not debug_dry_run and (not is_downloaded or is_changed):
+		if not dry_run and (not is_downloaded or is_changed):
 			local_filepath = os.path.join(library_path, host_filename)
 			try:
 				ftp_download(connection, host_fileinfo[1], local_filepath)
@@ -292,8 +290,8 @@ def sync(connection, settings, sync_settings):
 	return num_downloaded != 0 or num_changed != 0 or num_deleted != 0
 
 # ================================================================
-def create_all_names(settings, sync_settings):
-	if debug_dry_run:
+def create_all_names(settings, sync_settings, dry_run):
+	if dry_run:
 		return
 
 	local_sync_dir = sync_settings["LocalDirectory"]
@@ -377,7 +375,8 @@ def connect(ftpinfo):
 # ================================================================
 def main():
 	argparser = argparse.ArgumentParser()
-	argparser.add_argument("--create-names", action="store_true", help="Create names on disk even if nothing was changed") 
+	argparser.add_argument("--always-create-names", action="store_true", help="Create names on disk even if nothing was changed") 
+	argparser.add_argument("--dry-run", action="store_true", help="Do not download anything nor modify disk") 
 	args = argparser.parse_args()
 
 	# Read config
@@ -395,9 +394,9 @@ def main():
 	try:
 		for sync_name in settings["SyncSections"].split():
 			sync_settings = config[f"Sync.{sync_name}"]
-			changed = sync(connection, settings, sync_settings)
-			if changed or args.create_names:
-				create_all_names(settings, sync_settings)
+			changed = sync(connection, settings, sync_settings, args.dry_run)
+			if changed or args.always_create_names:
+				create_all_names(settings, sync_settings, args.dry_run)
 	except CustomError as e:
 		print("ERROR: " + str(e))
 		print("")
