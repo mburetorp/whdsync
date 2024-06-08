@@ -12,7 +12,7 @@ import xml.etree.ElementTree as ET
 import dateparser.search
 import argparse
 
-debug_dry_run = False
+debug_dry_run = True
 
 class CustomError(Exception):
 	pass
@@ -161,20 +161,23 @@ def get_host_files_using_database(connection, host_basepath, database_filepatter
 # ================================================================
 def sync(connection, settings, sync_settings):
 	host_basepath = sync_settings["FTPDirectory"].replace("\\", "/")
-	download_path = os.path.normpath(os.path.join(settings["DownloadDirectory"], sync_settings["LocalDirectory"]))
-	extract_ecs_path = os.path.normpath(os.path.join(settings["SyncExtractECSDirectory"], sync_settings["LocalDirectory"]))
-	extract_aga_path = os.path.normpath(os.path.join(settings["SyncExtractAGADirectory"], sync_settings["LocalDirectory"]))
-	delete_path = os.path.normpath(os.path.join(settings["SyncDeleteDirectory"], sync_settings["LocalDirectory"]))
+	local_sync_dir = sync_settings["LocalDirectory"]
+	updates_dir = settings["UpdatesDirectory"]
+	library_path = os.path.normpath(os.path.join(settings["LibraryDirectory"], local_sync_dir))
+	updates_ecs_path = os.path.normpath(os.path.join(updates_dir, "ExtractECS", local_sync_dir))
+	updates_aga_path = os.path.normpath(os.path.join(updates_dir, "ExtractAGA", local_sync_dir))
+	updates_delete_path = os.path.normpath(os.path.join(updates_dir, "Delete", local_sync_dir))
+
 	num_deleted = 0
 	num_changed = 0
 	num_downloaded = 0
 
-	print(f"> Synchronizing {connection.host}:{host_basepath} -> {download_path}")
+	print(f"> Synchronizing {connection.host}:{host_basepath} -> {library_path}")
 
 	# Create output directories
-	os.makedirs(download_path, exist_ok=True)
-	os.makedirs(extract_ecs_path, exist_ok=True)
-	os.makedirs(extract_aga_path, exist_ok=True)
+	os.makedirs(library_path, exist_ok=True)
+	os.makedirs(updates_ecs_path, exist_ok=True)
+	os.makedirs(updates_aga_path, exist_ok=True)
 
 	# Get host file list
 	host_fileinfos = get_host_files_using_database(connection, host_basepath, sync_settings["DatabaseFile"], sync_settings)
@@ -185,7 +188,7 @@ def sync(connection, settings, sync_settings):
 
 	# Get local file list
 	local_filenames = []
-	local_filepaths = glob.glob(os.path.join(download_path, "*.*"), recursive=False)
+	local_filepaths = glob.glob(os.path.join(library_path, "*.*"), recursive=False)
 	for i,filepath in enumerate(local_filepaths):
 		local_filepaths[i] = filepath
 		local_filenames.append(os.path.basename(filepath))
@@ -210,13 +213,13 @@ def sync(connection, settings, sync_settings):
 			delete_names.append(slave_name)
 
 			# Delete from download directory
-			os.remove(os.path.join(download_path, old_filename))
+			os.remove(os.path.join(library_path, old_filename))
 
 			# Delete from changed directories
-			if os.path.exists(os.path.join(extract_ecs_path, old_filename)):
-				os.remove(os.path.join(extract_ecs_path, old_filename))
-			if os.path.exists(os.path.join(extract_aga_path, old_filename)):
-				os.remove(os.path.join(extract_aga_path, old_filename))
+			if os.path.exists(os.path.join(updates_ecs_path, old_filename)):
+				os.remove(os.path.join(updates_ecs_path, old_filename))
+			if os.path.exists(os.path.join(updates_aga_path, old_filename)):
+				os.remove(os.path.join(updates_aga_path, old_filename))
 
 		# Remove from arrays
 		local_filenames.pop(local_index)
@@ -249,7 +252,7 @@ def sync(connection, settings, sync_settings):
 
 		# Download
 		if not debug_dry_run and (not is_downloaded or is_changed):
-			local_filepath = os.path.join(download_path, host_filename)
+			local_filepath = os.path.join(library_path, host_filename)
 			try:
 				ftp_download(connection, host_fileinfo[1], local_filepath)
 
@@ -267,9 +270,9 @@ def sync(connection, settings, sync_settings):
 
 				# Copy
 				if slave_is_aga(host_filename):
-					shutil.copyfile(local_filepath, os.path.join(extract_aga_path, host_filename))
+					shutil.copyfile(local_filepath, os.path.join(updates_aga_path, host_filename))
 				else:
-					shutil.copyfile(local_filepath, os.path.join(extract_ecs_path, host_filename))
+					shutil.copyfile(local_filepath, os.path.join(updates_ecs_path, host_filename))
 
 				# Add slave name to changed slaves
 				slave_name = slave_get_name(local_filepath)
@@ -280,9 +283,9 @@ def sync(connection, settings, sync_settings):
 				print("  Download failed with error:", str(e))
 
 	# Write delete names
-	os.makedirs(delete_path, exist_ok=True)
+	os.makedirs(updates_delete_path, exist_ok=True)
 	for i,name in enumerate(delete_names):
-		open(os.path.join(delete_path, name), "wb")
+		open(os.path.join(updates_delete_path, name), "wb")
 
 	print(f"- Downloaded: {num_downloaded}, Changed: {num_changed}, Deleted: {num_deleted}\n")
 
@@ -293,15 +296,11 @@ def create_all_names(settings, sync_settings):
 	if debug_dry_run:
 		return
 
-	try:
-		names_ecs_dir = settings["SyncNamesECSDirectory"]
-		names_aga_dir = settings["SyncNamesAGADirectory"]
-	except KeyError:
-		return
-
-	local_path = os.path.normpath(os.path.join(settings["DownloadDirectory"], sync_settings["LocalDirectory"]))
-	names_ecs_path = os.path.normpath(os.path.join(names_ecs_dir, sync_settings["LocalDirectory"]))
-	names_aga_path = os.path.normpath(os.path.join(names_aga_dir, sync_settings["LocalDirectory"]))
+	local_sync_dir = sync_settings["LocalDirectory"]
+	updates_dir = settings["UpdatesDirectory"]
+	library_path = os.path.normpath(os.path.join(settings["LibraryDirectory"], local_sync_dir))
+	names_ecs_path = os.path.normpath(os.path.join(updates_dir, "NamesECS", local_sync_dir))
+	names_aga_path = os.path.normpath(os.path.join(updates_dir, "NamesAGA", local_sync_dir))
 
 	# Create output directories
 	if os.path.exists(names_ecs_path):
@@ -312,7 +311,7 @@ def create_all_names(settings, sync_settings):
 	os.makedirs(names_aga_path)
 
 	# Get local file list
-	local_filepaths = glob.glob(os.path.join(local_path, "*.*"), recursive=False)
+	local_filepaths = glob.glob(os.path.join(library_path, "*.*"), recursive=False)
 
 	# Get .info files
 	slave_names_ecs = []
@@ -395,7 +394,7 @@ def main():
 	# Sync
 	try:
 		for sync_name in settings["SyncSections"].split():
-			sync_settings = config[sync_name]
+			sync_settings = config[f"Sync.{sync_name}"]
 			changed = sync(connection, settings, sync_settings)
 			if changed or args.create_names:
 				create_all_names(settings, sync_settings)
