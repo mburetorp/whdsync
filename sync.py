@@ -162,6 +162,7 @@ def sync(connection, settings, sync_settings, dry_run):
 	local_sync_dir = sync_settings["LocalDirectory"]
 	updates_dir = settings["UpdatesDirectory"]
 	library_path = os.path.normpath(os.path.join(settings["LibraryDirectory"], local_sync_dir))
+	first_run = not os.path.exists(library_path)
 	updates_ecs_path = os.path.normpath(os.path.join(updates_dir, "ExtractECS", local_sync_dir))
 	updates_aga_path = os.path.normpath(os.path.join(updates_dir, "ExtractAGA", local_sync_dir))
 	updates_delete_path = os.path.normpath(os.path.join(updates_dir, "Delete", local_sync_dir))
@@ -266,15 +267,16 @@ def sync(connection, settings, sync_settings, dry_run):
 					os.remove(local_filepath)
 					raise CustomError(f"Downloaded file '{local_filepath}' MD5 sum does not match host")
 
-				# Copy
-				if slave_is_aga(host_filename):
-					shutil.copyfile(local_filepath, os.path.join(updates_aga_path, host_filename))
-				else:
-					shutil.copyfile(local_filepath, os.path.join(updates_ecs_path, host_filename))
+				if not first_run:
+					# Copy
+					if slave_is_aga(host_filename):
+						shutil.copyfile(local_filepath, os.path.join(updates_aga_path, host_filename))
+					else:
+						shutil.copyfile(local_filepath, os.path.join(updates_ecs_path, host_filename))
 
-				# Add slave name to changed slaves
-				slave_name = slave_get_name(local_filepath)
-				delete_names.append(slave_name)
+					# Add slave name to changed slaves
+					slave_name = slave_get_name(local_filepath)
+					delete_names.append(slave_name)
 
 				num_downloaded += 1
 			except Exception as e:
