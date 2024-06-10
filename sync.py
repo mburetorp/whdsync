@@ -377,8 +377,8 @@ def connect(ftpinfo):
 # ================================================================
 def main():
 	argparser = argparse.ArgumentParser()
-	argparser.add_argument("--always-create-names", action="store_true", help="Create names on disk even if nothing was changed") 
-	argparser.add_argument("--dry-run", action="store_true", help="Do not download anything nor modify disk") 
+	argparser.add_argument("--always-create-names", action="store_true", help="Create names even if nothing was changed") 
+	argparser.add_argument("--dry-run", action="store_true", help="Do not download anything or modify the file system in any way") 
 	args = argparser.parse_args()
 
 	# Read config
