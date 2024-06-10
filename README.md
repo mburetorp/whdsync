@@ -1,4 +1,4 @@
-## WHDSync
+## Amiga WHDSync
 WHDSync is a script to download Retroplay's WHDLoad Packs and install incremental updates on the Amiga. I wrote it for my own needs, but it should be relatively easy to modify.
 
 ### Prerequisites
