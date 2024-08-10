@@ -115,7 +115,7 @@ def download_database(connection, database_pattern):
 	download_filepath = os.path.join("Temp/", filepattern)
 	download_filepath = download_filepath.replace("*", "").replace("?", "")
 
-	print(f"Found database '{os.path.basename(database_filepath)}'...")
+	print(f"Found database '{os.path.basename(database_filepath)}'")
 	ftp_download(connection, database_filepath, download_filepath)
 	return download_filepath
 
