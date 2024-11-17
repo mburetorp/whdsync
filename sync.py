@@ -355,10 +355,10 @@ def connect(ftpinfo):
 	max_attempts = 10
 	for attempt in range(max_attempts):
 		for host in hosts:
-			print(f"Connecting to '{host}'...", end="")
+			print(f"Connecting to '{host}'...", end="", flush=True)
 			try:
 				connection = ftplib.FTP(host, ftpinfo["Username"], ftpinfo["Password"], encoding=ftpinfo["Encoding"])
-				print(" Successful")
+				print(" OK")
 				print("")
 				return connection
 			except Exception as e:
