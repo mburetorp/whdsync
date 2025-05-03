@@ -171,7 +171,7 @@ def sync(connection, settings, sync_settings, dry_run):
 	num_changed = 0
 	num_downloaded = 0
 
-	print(f"> Synchronizing {connection.host}:{host_basepath} -> {library_path}")
+	print(f"# Synchronizing {connection.host}:{host_basepath} -> {library_path}")
 
 	# Create output directories
 	os.makedirs(library_path, exist_ok=True)
@@ -407,4 +407,4 @@ def main():
 
 main()
 
-input("Press Enter to exit...")
+input("Press Enter to exit")
