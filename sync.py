@@ -205,6 +205,7 @@ def sync(connection, settings, sync_settings, dry_run):
 	for old_filename in old_filenames:
 		print("- [OLD] " + old_filename)
 		local_index = find_element(local_filenames, old_filename)
+		assert local_index is not None
 
 		if not dry_run:
 			# Add slave name to changed slaves
