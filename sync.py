@@ -245,7 +245,7 @@ def sync(connection, settings, sync_settings, dry_run):
 
 		# Check if already downloaded
 		local_index = find_element(local_filenames, host_filename)
-		if local_index != None:
+		if local_index is not None:
 			local_filepath = local_filepaths[local_index]
 			size_diff = host_filesize - os.path.getsize(local_filepath)
 			is_downloaded = True
@@ -329,7 +329,7 @@ def create_all_names(settings, sync_settings, dry_run):
 		print(f"\rScanning archives... {100 * i // (len(local_filepaths) - 1)}%", end="")
 		try:
 			slave_name = slave_get_name(local_filepath)
-			if find_element(slave_names_aga, slave_name):
+			if find_element(slave_names_aga, slave_name) is not None:
 				print(f" : ERROR: '{slave_name}' found in multiple archives")
 			elif slave_is_aga(local_filepath):
 				slave_names_aga.append(slave_name)
