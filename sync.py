@@ -9,7 +9,8 @@ import lhafile
 import zipfile
 import hashlib
 import xml.etree.ElementTree as ET
-import dateparser.search
+import re
+from datetime import datetime
 import argparse
 
 class CustomError(Exception):
@@ -95,7 +96,7 @@ def download_database(connection, database_pattern):
 	basepath = os.path.dirname(database_pattern)
 	filepattern = os.path.basename(database_pattern)
 
-	# Search for most recent database
+	# Search for most recent database by YYYY-MM-DD in parentheses
 	newest_date = None
 	database_filepath = None
 
@@ -103,9 +104,16 @@ def download_database(connection, database_pattern):
 	dirs, files = ftp_list(connection)
 	for info in files:
 		if fnmatch.fnmatch(info[0], filepattern):
-			date = dateparser.search.search_dates(info[0])
-			if database_filepath == None or (date != None and newest_date != None and date[0][1] > newest_date[0][1]):
-				newest_date = date
+			m = re.search(r"\((\d{4}-\d{2}-\d{2})\)", info[0])
+			if not m:
+				continue
+			try:
+				date_dt = datetime.strptime(m.group(1), "%Y-%m-%d")
+			except ValueError:
+				# Skip invalid dates (e.g., bad day numbers)
+				continue
+			if newest_date is None or date_dt > newest_date:
+				newest_date = date_dt
 				database_filepath = os.path.join(basepath, info[0]).replace("\\", "/")
 
 	if database_filepath == None:
