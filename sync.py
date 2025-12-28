@@ -25,22 +25,32 @@ def find_element(list, element):
 
 # ================================================================
 def hash_file_md5(filepath):
-	with open(filepath,"rb") as f:
+	with open(filepath, "rb") as f:
 		return hashlib.md5(f.read()).hexdigest()
-	raise CustomError(f"Failed to calculate md5 hash for file '{filepath}'")
 
 # ================================================================
 def ftp_list(connection):
-	file_list, dirs, files = [], [], []
-	connection.retrlines('LIST', lambda x: file_list.append(x.split(None, 8)))
-	for info in file_list:
-		if info[0] == "total":
-			continue
-		elif info[0].startswith('d'):
-			dirs.append(info[-1])
-		else:
-			files.append( (info[-1], int(info[4])) )
-	return dirs, files
+	dirs, files = [], []
+	try:
+		for name, facts in connection.mlsd():
+			type_val = facts.get('type')
+			if type_val == 'dir':
+				dirs.append(name)
+			else:
+				size = int(facts.get('size', '0'))
+				files.append((name, size))
+		return dirs, files
+	except Exception:
+		file_list = []
+		connection.retrlines('LIST', lambda x: file_list.append(x.split(None, 8)))
+		for info in file_list:
+			if not info or info[0] == "total":
+				continue
+			elif info[0].startswith('d'):
+				dirs.append(info[-1])
+			else:
+				files.append((info[-1], int(info[4])))
+		return dirs, files
 
 # ================================================================
 def ftp_walk(connection, path):
@@ -53,15 +63,10 @@ def ftp_walk(connection, path):
 
 # ================================================================
 def ftp_download(connection, host_filepath, local_filepath):
-	local_dir = os.path.dirname(local_filepath)
-	os.makedirs(local_dir, exist_ok=True)
-	file = open(local_filepath, 'wb')
-	try:
-		connection.retrbinary("RETR /" + host_filepath, file.write)
-	except Exception as e:
-		file.close()
-		os.remove(local_filepath)
-		raise e
+    local_dir = os.path.dirname(local_filepath)
+    os.makedirs(local_dir, exist_ok=True)
+    with open(local_filepath, 'wb') as file:
+        connection.retrbinary("RETR /" + host_filepath, file.write)
 
 # ================================================================
 def slave_filter(name, accepted_exts, ignored_names, ignored_tags):
@@ -85,11 +90,25 @@ def slave_is_aga(name):
 
 # ================================================================
 def slave_get_name(filepath):
-	lha = lhafile.Lhafile(filepath)
-	for info in lha.infolist():
-		if not info.directory and info.filename.endswith(".info"):
-			return os.path.splitext(info.filename)[0]
-	raise CustomError(f"No .info file found in archive '{filepath}'")
+	try:
+		lha = lhafile.Lhafile(filepath)
+		info_files = []
+
+		for info in lha.infolist():
+			if not info.directory and info.filename.lower().endswith(".info"):
+				info_files.append(info.filename)
+
+		if not info_files:
+			raise CustomError(f"No .info file found in archive '{filepath}'")
+		if len(info_files) > 1:
+			raise CustomError(f"Multiple .info files found in archive '{filepath}'")
+
+		return os.path.splitext(info_files[0])[0]
+
+	except Exception as e:
+		if isinstance(e, CustomError):
+			raise
+		raise CustomError(f"Failed to read archive '{filepath}': {str(e)}")
 
 # ================================================================
 def download_database(connection, database_pattern):
@@ -129,7 +148,7 @@ def download_database(connection, database_pattern):
 
 # ================================================================
 def parse_database(root, host_basepath, sync_settings):
-	accepted_exts = sync_settings["AcceptedExtentions"].split()
+	accepted_exts = sync_settings["AcceptedExtensions"].split()
 	ignored_names = sync_settings["IgnoredNames"].split()
 	ignored_tags = sync_settings["IgnoredTags"].split()
 	host_fileinfos = []
@@ -160,7 +179,7 @@ def get_host_files_using_database(connection, host_basepath, database_filepatter
 		with zip.open(filenames[0]) as file:
 			root = ET.fromstring(file.read())
 			host_fileinfos = parse_database(root, host_basepath, sync_settings)
-	
+
 	print(f"Found {len(host_fileinfos)} slaves on FTP")
 	return host_fileinfos
 
@@ -196,7 +215,7 @@ def sync(connection, settings, sync_settings, dry_run):
 	# Get local file list
 	local_filenames = []
 	local_filepaths = glob.glob(os.path.join(library_path, "*.*"), recursive=False)
-	for i,filepath in enumerate(local_filepaths):
+	for i, filepath in enumerate(local_filepaths):
 		local_filepaths[i] = filepath
 		local_filenames.append(os.path.basename(filepath))
 	print(f"Found {len(local_filepaths)} slaves locally")
@@ -293,8 +312,9 @@ def sync(connection, settings, sync_settings, dry_run):
 
 	# Write delete names
 	os.makedirs(updates_delete_path, exist_ok=True)
-	for i,name in enumerate(delete_names):
-		open(os.path.join(updates_delete_path, name), "wb")
+	for name in delete_names:
+		with open(os.path.join(updates_delete_path, name), "wb"):
+			pass
 
 	print(f"- Downloaded: {num_downloaded}, Changed: {num_changed}, Deleted: {num_deleted}\n")
 
@@ -325,15 +345,17 @@ def create_all_names(settings, sync_settings, dry_run):
 	# Get .info files
 	slave_names_ecs = []
 	slave_names_aga = []
-	for i,local_filepath in enumerate(local_filepaths):
-		print(f"\rScanning archives... {100 * i // (len(local_filepaths) - 1)}%", end="")
+	for i, local_filepath in enumerate(local_filepaths):
+		print(f"\rScanning archives... {100 * (i + 1) // (len(local_filepaths))}%", end="")
 		try:
 			slave_name = slave_get_name(local_filepath)
 			if find_element(slave_names_aga, slave_name) is not None:
 				print(f" : ERROR: '{slave_name}' found in multiple archives")
 			elif slave_is_aga(local_filepath):
+				# AGA only slaves
 				slave_names_aga.append(slave_name)
 			else:
+				# ECS slaves also work on AGA machines
 				slave_names_aga.append(slave_name)
 				slave_names_ecs.append(slave_name)
 		except:
@@ -346,14 +368,16 @@ def create_all_names(settings, sync_settings, dry_run):
 		print("")
 		return
 
-	for i,name in enumerate(slave_names_aga):
-		print(f"\rCreating AGA names... {100 * i // (len(slave_names_aga) - 1)}%", end="")
-		open(os.path.join(names_aga_path, name), "wb")
+	for i, name in enumerate(slave_names_aga):
+		print(f"\rCreating AGA names... {100 * (i + 1) // (len(slave_names_aga))}%", end="")
+		with open(os.path.join(names_aga_path, name), "wb"):
+			pass
 	print("")
 
-	for i,name in enumerate(slave_names_ecs):
-		print(f"\rCreating ECS names... {100 * i // (len(slave_names_ecs) - 1)}%", end="")
-		open(os.path.join(names_ecs_path, name), "wb")
+	for i, name in enumerate(slave_names_ecs):
+		print(f"\rCreating ECS names... {100 * (i + 1) // (len(slave_names_ecs))}%", end="")
+		with open(os.path.join(names_ecs_path, name), "wb"):
+			pass
 	print("")
 
 	print("")
@@ -376,7 +400,7 @@ def connect(ftpinfo):
 
 		print("Waiting 30 seconds before next attempt")
 		print("")
-		time.sleep(5)
+		time.sleep(30)
 
 	print(f"Failed to connect on all {max_attempts} attempts")
 	print("")
@@ -386,8 +410,8 @@ def connect(ftpinfo):
 # ================================================================
 def main():
 	argparser = argparse.ArgumentParser()
-	argparser.add_argument("--always-create-names", action="store_true", help="Create names even if nothing was changed") 
-	argparser.add_argument("--dry-run", action="store_true", help="Do not download anything or modify the file system in any way") 
+	argparser.add_argument("--always-create-names", action="store_true", help="Create names even if nothing was changed")
+	argparser.add_argument("--dry-run", action="store_true", help="Do not download anything or modify the file system in any way")
 	args = argparser.parse_args()
 
 	# Read config
