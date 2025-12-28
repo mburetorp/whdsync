@@ -12,6 +12,7 @@ import xml.etree.ElementTree as ET
 import re
 from datetime import datetime
 import argparse
+import io
 
 class CustomError(Exception):
 	pass
@@ -118,6 +119,7 @@ def download_database(connection, database_pattern):
 	# Search for most recent database by YYYY-MM-DD in parentheses
 	newest_date = None
 	database_filepath = None
+	database_filename = None
 
 	connection.cwd("/" + basepath)
 	dirs, files = ftp_list(connection)
@@ -134,17 +136,17 @@ def download_database(connection, database_pattern):
 			if newest_date is None or date_dt > newest_date:
 				newest_date = date_dt
 				database_filepath = os.path.join(basepath, info[0]).replace("\\", "/")
+				database_filename = info[0]
 
 	if database_filepath == None:
 		raise CustomError("No database found using pattern '" + filepattern + "'")
 
-	# Download
-	download_filepath = os.path.join("Temp/", filepattern)
-	download_filepath = download_filepath.replace("*", "").replace("?", "")
-
-	print(f"Found database '{os.path.basename(database_filepath)}'")
-	ftp_download(connection, database_filepath, download_filepath)
-	return download_filepath
+	# Download into memory
+	print(f"Found database '{database_filename}'")
+	memory_stream = io.BytesIO()
+	connection.retrbinary("RETR /" + database_filepath, memory_stream.write)
+	memory_stream.seek(0)
+	return memory_stream
 
 # ================================================================
 def parse_database(root, host_basepath, sync_settings):
@@ -169,10 +171,10 @@ def parse_database(root, host_basepath, sync_settings):
 
 # ================================================================
 def get_host_files_using_database(connection, host_basepath, database_filepattern, sync_settings):
-	database_filepath = download_database(connection, database_filepattern)
+	database_stream = download_database(connection, database_filepattern)
 	host_fileinfos = []
 
-	with zipfile.ZipFile(database_filepath) as zip:
+	with zipfile.ZipFile(database_stream) as zip:
 		filenames = zip.namelist()
 		if len(filenames) != 1:
 			raise CustomError("Expected database to contain exactly one file")
